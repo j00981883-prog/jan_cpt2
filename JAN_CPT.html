@@ -1466,7 +1466,8 @@ function Tracker({
     setSched: setSched,
     execSum: execSum,
     pay: pay,
-    meta: meta
+    meta: meta,
+    projectId: projectId
   }), tab === "log" && /*#__PURE__*/React.createElement(WeeklyLog, {
     rows: rows,
     setWeek: setWeek,
@@ -1623,6 +1624,62 @@ function CalendarStrip({
 }
 
 /* ================= Dashboard ================= */
+// ============================================================================
+//  LAST FIELD WALKTHROUGH — the field's report back to the dashboard.
+//  Answers what leadership actually asks: has anyone been out there, when, and
+//  did they find anything. Staleness is treated like the charter limits — an
+//  absence of inspection is a condition worth flagging, not just missing data.
+// ============================================================================
+const WALK_WATCH_DAYS = 7;
+const WALK_STOP_DAYS = 14;
+
+function LastWalkthrough({ projectId }) {
+  const [visit, setVisit] = useState(undefined); // undefined = still loading
+  const [notes, setNotes] = useState([]);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const { data: v } = await sb.from("field_visits").select("*").eq("project_id", projectId).not("ended_at", "is", null).order("started_at", { ascending: false }).limit(1);
+        const last = v && v[0] || null;
+        if (!live) return;
+        setVisit(last);
+        if (last) {
+          const { data: n } = await sb.from("field_reports").select("*").eq("visit_id", last.id).order("created_at", { ascending: false });
+          if (live) setNotes(n || []);
+        }
+      } catch (e) {
+        if (live) setVisit(null); // table not created yet — stay quiet
+      }
+    })();
+    return () => { live = false; };
+  }, [projectId]);
+
+  if (visit === undefined) return null;
+
+  if (!visit) {
+    return React.createElement("section", { className: "panel rise" }, React.createElement("h2", null, "Field walkthroughs"), React.createElement("div", { className: "lw-none" }, "No completed walkthrough recorded yet. Field staff start one from the phone view; it appears here when they finish."));
+  }
+
+  const started = new Date(visit.started_at);
+  const days = Math.floor((Date.now() - started.getTime()) / 86400000);
+  const mins = visit.ended_at ? Math.max(1, Math.round((new Date(visit.ended_at) - started) / 60000)) : null;
+  const stale = days >= WALK_STOP_DAYS ? "red" : days >= WALK_WATCH_DAYS ? "amber" : null;
+
+  return React.createElement("section", { className: "panel rise" },
+    React.createElement("h2", null, "Last field walkthrough"),
+    React.createElement("div", { className: "lw-card" },
+      React.createElement("div", { className: "lw-main" },
+        React.createElement("div", { className: "lw-who" }, visit.walker_name || "Field staff"),
+        React.createElement("div", { className: "lw-when" }, started.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }), " at ", started.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), mins ? ` · ${mins} min on site` : "", days === 0 ? " · today" : ` · ${days} day${days === 1 ? "" : "s"} ago`)),
+      React.createElement("div", { className: "lw-stats" },
+        React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, `${visit.items_done}/${visit.items_total}`), React.createElement("i", null, "Checked")),
+        React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, String(visit.note_count || 0)), React.createElement("i", null, "Notes")))),
+    stale && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
+    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + n.category }, n.category), React.createElement("span", null, n.note)))));
+}
+
 function Dashboard({
   current,
   rows,
@@ -1631,7 +1688,8 @@ function Dashboard({
   setSched,
   execSum,
   pay,
-  meta
+  meta,
+  projectId
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
@@ -1654,7 +1712,9 @@ function Dashboard({
     className: "exec-metric"
   }, label), /*#__PURE__*/React.createElement("div", {
     className: "exec-status"
-  }, text)))))), /*#__PURE__*/React.createElement("div", {
+  }, text)))))), /*#__PURE__*/React.createElement(LastWalkthrough, {
+    projectId: projectId
+  }), /*#__PURE__*/React.createElement("div", {
     className: "kpis",
     style: {
       marginTop: 16
@@ -4071,6 +4131,44 @@ main{max-width:1080px;margin:0 auto}
 .field-btn-primary:disabled{opacity:.5}
 @media(min-width:600px){.field-main,.field-proj,.field-tabs{padding-left:0;padding-right:0}}
 
+/* ===== WALKTHROUGH BAR (field) ===== */
+.fv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 16px 4px;
+  padding:13px 15px;border-radius:13px;background:#fff;border:1px solid #DCE6F0}
+.fv-on{background:#EEF8F1;border-color:#B9E3C6}
+.fv-live{flex:1;font-size:15px;font-weight:700;color:#2E7D52;display:flex;align-items:center;gap:9px}
+.fv-idle{color:#7C8FA1;font-weight:600}
+.fv-live i{font-style:normal;font-weight:400;font-size:12.5px;color:#7C8FA1;margin-left:2px}
+.fv-dot{width:9px;height:9px;border-radius:50%;background:#2E7D52;flex:none;
+  animation:fvPulse 1.8s ease-in-out infinite}
+@keyframes fvPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.fv-btn{flex:none;padding:11px 18px;border:none;border-radius:11px;font-size:15px;
+  font-weight:800;font-family:inherit;cursor:pointer;min-height:46px}
+.fv-start{background:#0B3D6E;color:#fff}
+.fv-end{background:#2E7D52;color:#fff}
+.fv-btn:disabled{opacity:.5}
+.fv-queued{flex-basis:100%;font-size:13px;color:#B7791F;background:#FBF0DC;
+  border-radius:8px;padding:9px 11px;line-height:1.45}
+
+/* ===== LAST WALKTHROUGH CARD (dashboard) ===== */
+.lw-card{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.lw-main{flex:1;min-width:220px}
+.lw-who{font-size:15px;font-weight:700;color:var(--blue)}
+.lw-when{font-size:12.5px;color:var(--dim);margin-top:2px}
+.lw-stats{display:flex;gap:22px}
+.lw-stat b{display:block;font-family:var(--disp);font-weight:700;font-size:24px;color:var(--blue);line-height:1}
+.lw-stat i{display:block;font-style:normal;font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--dim);margin-top:3px}
+.lw-stale{background:#FBF0DC;border:1px solid #F0D9A8;color:#8A6414;border-radius:9px;
+  padding:10px 13px;font-size:13px;margin-top:12px;line-height:1.5}
+.lw-stale-red{background:#FBE9E9;border-color:#EFC9C9;color:#C62828}
+.lw-none{color:var(--dim);font-size:13.5px}
+.lw-notes{margin-top:12px;border-top:1px solid var(--line);padding-top:11px}
+.lw-note{display:flex;gap:10px;align-items:flex-start;padding:6px 0;font-size:13px}
+.lw-cat{flex:none;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 9px;border-radius:999px;background:#EAF3FB;color:var(--blue)}
+.lw-cat-Safety{background:#FBE9E9;color:#C62828}
+.lw-cat-Maintenance{background:#FBF0DC;color:#8A6414}
+
 /* ===== FOLDER SCAN (new project) ===== */
 .np-scan{margin-top:12px;background:#EEF6FC;border:1px solid #BFDCF0;border-radius:10px;padding:12px 14px}
 .np-scan-h{font-size:13px;font-weight:700;color:#0B3D6E;margin-bottom:6px}
@@ -6300,13 +6398,22 @@ function FieldProject({
   const [reports, setReports] = useState(null);
   const [tab, setTab] = useState("checklist");
   const [composing, setComposing] = useState(false);
+  const [visit, setVisit] = useState(null);     // the open walkthrough, if any
+  const [ending, setEnding] = useState(false);
+  const [queued, setQueued] = useState(0);      // taps waiting on a signal
+
   async function load() {
     try {
-      const [ckRes, rpRes] = await Promise.all([sb.from("field_checklist").select("*").eq("project_id", projectId).order("sort_order"), sb.from("field_reports").select("*").eq("project_id", projectId).order("created_at", {
-        ascending: false
-      }).limit(20)]);
+      const [ckRes, rpRes, vRes] = await Promise.all([
+        sb.from("field_checklist").select("*").eq("project_id", projectId).order("sort_order"),
+        sb.from("field_reports").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(20),
+        // an unfinished walkthrough by this user — resumed rather than
+        // orphaned when the app is closed mid-inspection
+        sb.from("field_visits").select("*").eq("project_id", projectId).is("ended_at", null).order("started_at", { ascending: false }).limit(1)
+      ]);
       setItems(ckRes && ckRes.data || []);
       setReports(rpRes && rpRes.data || []);
+      setVisit(vRes && vRes.data && vRes.data[0] || null);
     } catch (e) {
       setItems([]);
       setReports([]);
@@ -6315,15 +6422,62 @@ function FieldProject({
   useEffect(() => {
     load();
   }, [projectId]);
+
+  async function startVisit() {
+    const { data: sess } = await sb.auth.getSession();
+    const uid = sess && sess.session && sess.session.user.id;
+    const { data, error } = await sb.from("field_visits").insert({
+      project_id: projectId,
+      walker_id: uid,
+      walker_name: (profile && profile.full_name) || "Field staff"
+    }).select().single();
+    if (!error) setVisit(data);
+  }
+
+  async function endVisit() {
+    if (!visit) return;
+    setEnding(true);
+    const total = (items || []).length;
+    const done = (items || []).filter(i => i.done).length;
+    const notes = (reports || []).filter(r => r.visit_id === visit.id).length;
+    await sb.from("field_visits").update({
+      ended_at: new Date().toISOString(),
+      items_total: total,
+      items_done: done,
+      note_count: notes
+    }).eq("id", visit.id);
+    setVisit(null);
+    setEnding(false);
+    load();
+  }
+
   async function toggle(item) {
-    // optimistic — the whole point is a fast tap during a walkthrough
-    setItems(prev => prev.map(i => i.id === item.id ? {
-      ...i,
-      done: !i.done
-    } : i));
-    await sb.from("field_checklist").update({
-      done: !item.done
+    // Optimistic — a walkthrough means tapping while walking, and waiting on
+    // the network for each tap makes the tool unusable. If the write fails
+    // (dead zone on the airfield), the tap is counted as queued and the user
+    // is told, rather than the change silently vanishing.
+    const next = !item.done;
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, done: next } : i));
+
+    const stamp = new Date().toISOString();
+    const { error } = await sb.from("field_checklist").update({
+      done: next,
+      last_visit_id: visit ? visit.id : null,
+      last_checked_at: stamp,
+      last_checked_by: (profile && profile.full_name) || null
     }).eq("id", item.id);
+
+    if (error) {
+      setQueued(q => q + 1);
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, done: !next } : i));
+      return;
+    }
+    // permanent per-visit record, separate from the item's current state
+    if (visit) {
+      await sb.from("field_visit_items").insert({
+        visit_id: visit.id, item_id: item.id, label: item.label, done: next
+      });
+    }
   }
   const doneCount = (items || []).filter(i => i.done).length;
   const pct = items && items.length ? doneCount / items.length * 100 : 0;
@@ -6337,6 +6491,26 @@ function FieldProject({
   }, "‹ Projects"), /*#__PURE__*/React.createElement("div", {
     className: "field-proj-title"
   }, project ? project.title : "…")), /*#__PURE__*/React.createElement("div", {
+    className: "fv-bar" + (visit ? " fv-on" : "")
+  }, visit ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "fv-live"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "fv-dot"
+  }), "Walkthrough in progress", /*#__PURE__*/React.createElement("i", null, "started ", new Date(visit.started_at).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "fv-btn fv-end",
+    disabled: ending,
+    onClick: endVisit
+  }, ending ? "Saving…" : "Finish")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "fv-live fv-idle"
+  }, "Not currently walking"), /*#__PURE__*/React.createElement("button", {
+    className: "fv-btn fv-start",
+    onClick: startVisit
+  }, "Start walkthrough")), queued > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "fv-queued"
+  }, queued, " tap", queued === 1 ? "" : "s", " didn't save — no signal. Try again when you have service.")), /*#__PURE__*/React.createElement("div", {
     className: "field-tabs"
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-tab" + (tab === "checklist" ? " on" : ""),
@@ -6391,6 +6565,7 @@ function FieldProject({
     className: "field-report-note"
   }, r.note)))), composing && /*#__PURE__*/React.createElement(ReportComposer, {
     projectId: projectId,
+    visitId: visit ? visit.id : null,
     onClose: () => setComposing(false),
     onSaved: () => {
       setComposing(false);
@@ -6400,6 +6575,7 @@ function FieldProject({
 }
 function ReportComposer({
   projectId,
+  visitId,
   onClose,
   onSaved
 }) {
@@ -6420,7 +6596,8 @@ function ReportComposer({
       project_id: projectId,
       category,
       note: note.trim(),
-      reported_by: uid
+      reported_by: uid,
+      visit_id: visitId || null
     });
     setBusy(false);
     if (!error) onSaved();
