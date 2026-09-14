@@ -3836,8 +3836,11 @@ main{max-width:1080px;margin:0 auto}
 .cloud-btn-gold{background:#F2A900;color:#071A33}
 .cloud-btn-ghost{background:#fff;color:#0B3D6E;border:1px solid #DCE6F0}
 .cloud-msg{margin-top:13px;font-size:13.5px;color:#C62828}
+.cloud-msg.ok{color:#2E7D52;background:#EEF8F1;border:1px solid #B9E3C6;border-radius:9px;padding:10px 12px}
 .cloud-alt{margin-top:17px;font-size:14px;color:#5A6B7C}
 .cloud-alt a{color:#2E9BD6;cursor:pointer;font-weight:700}
+.cloud-forgot{display:block;text-align:right;margin:-5px 0 14px;color:#2E789F;font-size:13px;font-weight:700;cursor:pointer}
+.cloud-auth-help{margin:-10px 0 18px;color:#657A8D;font-size:14px;line-height:1.5}
 .cloud-shell{min-height:100vh;position:relative;overflow:hidden;
   background:radial-gradient(ellipse 120% 80% at 20% -10%,#164B7D 0%,transparent 55%),
              radial-gradient(ellipse 100% 70% at 85% 110%,#0A2C4E 0%,transparent 60%),
@@ -4577,86 +4580,90 @@ function AuthScreen() {
     setMsg("");
     try {
       if (mode === "signin") {
-        const {
-          error
-        } = await sb.auth.signInWithPassword({
-          email,
-          password: pw
-        });
+        const { error } = await sb.auth.signInWithPassword({ email, password: pw });
         if (error) throw error;
-      } else {
-        const {
-          error
-        } = await sb.auth.signUp({
-          email,
-          password: pw,
-          options: {
-            data: {
-              full_name: name
-            }
-          }
+      } else if (mode === "signup") {
+        const { error } = await sb.auth.signUp({
+          email, password: pw, options: { data: { full_name: name } }
         });
         if (error) throw error;
         setMsg("Account created — you can sign in now.");
         setMode("signin");
+      } else {
+        const redirectTo = /^https?:/i.test(window.location.href)
+          ? window.location.href.split(/[?#]/)[0]
+          : "https://j00981883-prog.github.io/jan_cpt2/JAN_CPT.html";
+        const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        if (error) throw error;
+        setMsg("Password reset email sent. Check your inbox and open the link to choose a new password.");
       }
     } catch (err) {
-      // "Failed to fetch" means the request never left the browser — almost
-      // always a blocked network rather than a wrong password. Say so, since
-      // the raw message sends people looking in the wrong place.
       const raw = err.message || String(err);
-      setMsg(/failed to fetch|networkerror|load failed/i.test(raw) ? "Couldn't reach the database. The sign-in request didn't complete — this is a " + "network problem, not a wrong password. If you're on the JMAA network, it may be " + "blocking supabase.co. Try another network, or ask IT to allow it." : raw);
+      setMsg(/failed to fetch|networkerror|load failed/i.test(raw) ? "Couldn't reach the database. The request didn't complete. Try another network, or ask IT to allow supabase.co." : raw);
     } finally {
       setBusy(false);
     }
   }
-  return /*#__PURE__*/React.createElement("div", {
-    className: "cloud-auth"
-  }, /*#__PURE__*/React.createElement("form", {
-    className: "cloud-auth-card",
-    onSubmit: submit
-  }, /*#__PURE__*/React.createElement("img", {
-    src: LOGO,
-    alt: "JMAA",
-    className: "cloud-auth-logo"
-  }), /*#__PURE__*/React.createElement("div", {
+  const switchMode = next => { setMode(next); setMsg(""); };
+  return /*#__PURE__*/React.createElement("div", { className: "cloud-auth" }, /*#__PURE__*/React.createElement("form", {
+    className: "cloud-auth-card", onSubmit: submit
+  }, /*#__PURE__*/React.createElement("img", { src: LOGO, alt: "JMAA", className: "cloud-auth-logo" }), /*#__PURE__*/React.createElement("div", {
     className: "cloud-auth-eyebrow"
   }, "JAN Capital Project Tracker"), /*#__PURE__*/React.createElement("h1", {
     className: "cloud-auth-h1"
-  }, "JAN CPT"), mode === "signup" && /*#__PURE__*/React.createElement("label", {
+  }, mode === "forgot" ? "Reset password" : "JAN CPT"), mode === "forgot" && /*#__PURE__*/React.createElement("p", {
+    className: "cloud-auth-help"
+  }, "Enter your account email and we’ll send you a secure reset link."), mode === "signup" && /*#__PURE__*/React.createElement("label", {
     className: "cloud-f"
   }, /*#__PURE__*/React.createElement("span", null, "Full name"), /*#__PURE__*/React.createElement("input", {
-    value: name,
-    onChange: e => setName(e.target.value),
-    required: true
-  })), /*#__PURE__*/React.createElement("label", {
-    className: "cloud-f"
-  }, /*#__PURE__*/React.createElement("span", null, "Email"), /*#__PURE__*/React.createElement("input", {
-    type: "email",
-    value: email,
-    onChange: e => setEmail(e.target.value),
-    required: true
-  })), /*#__PURE__*/React.createElement("label", {
-    className: "cloud-f"
-  }, /*#__PURE__*/React.createElement("span", null, "Password"), /*#__PURE__*/React.createElement("input", {
-    type: "password",
-    value: pw,
-    onChange: e => setPw(e.target.value),
-    required: true,
-    minLength: 6
+    value: name, onChange: e => setName(e.target.value), required: true
+  })), /*#__PURE__*/React.createElement("label", { className: "cloud-f" }, /*#__PURE__*/React.createElement("span", null, "Email"), /*#__PURE__*/React.createElement("input", {
+    type: "email", value: email, onChange: e => setEmail(e.target.value), required: true, autoComplete: "email"
+  })), mode !== "forgot" && /*#__PURE__*/React.createElement("label", { className: "cloud-f" }, /*#__PURE__*/React.createElement("span", null, "Password"), /*#__PURE__*/React.createElement("input", {
+    type: "password", value: pw, onChange: e => setPw(e.target.value), required: true, minLength: 6, autoComplete: mode === "signin" ? "current-password" : "new-password"
+  })), mode === "signin" && /*#__PURE__*/React.createElement("a", {
+    className: "cloud-forgot", onClick: () => switchMode("forgot")
+  }, "Forgot password?"), /*#__PURE__*/React.createElement("button", {
+    className: "cloud-btn cloud-btn-primary", disabled: busy
+  }, busy ? "…" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"), msg && /*#__PURE__*/React.createElement("div", {
+    className: "cloud-msg" + (/sent|created/i.test(msg) ? " ok" : "")
+  }, msg), /*#__PURE__*/React.createElement("div", { className: "cloud-alt" }, mode === "signin" ? "Need an account? " : mode === "signup" ? "Already have one? " : "Remembered your password? ", /*#__PURE__*/React.createElement("a", {
+    onClick: () => switchMode(mode === "signin" ? "signup" : "signin")
+  }, mode === "signin" ? "Sign up" : "Back to sign in"))));
+}
+
+function ResetPasswordScreen({ onDone }) {
+  const [pw, setPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    if (pw.length < 8) { setMsg("Use at least 8 characters."); return; }
+    if (pw !== confirmPw) { setMsg("The passwords do not match."); return; }
+    setBusy(true);
+    setMsg("");
+    const { error } = await sb.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) { setMsg(error.message); return; }
+    setMsg("Password updated successfully.");
+    setTimeout(onDone, 900);
+  }
+  return /*#__PURE__*/React.createElement("div", { className: "cloud-auth" }, /*#__PURE__*/React.createElement("form", {
+    className: "cloud-auth-card", onSubmit: save
+  }, /*#__PURE__*/React.createElement("img", { src: LOGO, alt: "JMAA", className: "cloud-auth-logo" }), /*#__PURE__*/React.createElement("div", {
+    className: "cloud-auth-eyebrow"
+  }, "JAN Capital Project Tracker"), /*#__PURE__*/React.createElement("h1", { className: "cloud-auth-h1" }, "Choose a new password"), /*#__PURE__*/React.createElement("p", {
+    className: "cloud-auth-help"
+  }, "Your new password must contain at least 8 characters."), /*#__PURE__*/React.createElement("label", { className: "cloud-f" }, /*#__PURE__*/React.createElement("span", null, "New password"), /*#__PURE__*/React.createElement("input", {
+    type: "password", value: pw, onChange: e => setPw(e.target.value), required: true, minLength: 8, autoComplete: "new-password"
+  })), /*#__PURE__*/React.createElement("label", { className: "cloud-f" }, /*#__PURE__*/React.createElement("span", null, "Confirm new password"), /*#__PURE__*/React.createElement("input", {
+    type: "password", value: confirmPw, onChange: e => setConfirmPw(e.target.value), required: true, minLength: 8, autoComplete: "new-password"
   })), /*#__PURE__*/React.createElement("button", {
-    className: "cloud-btn cloud-btn-primary",
-    disabled: busy
-  }, busy ? "…" : mode === "signin" ? "Sign in" : "Create account"), msg && /*#__PURE__*/React.createElement("div", {
-    className: "cloud-msg"
-  }, msg), /*#__PURE__*/React.createElement("div", {
-    className: "cloud-alt"
-  }, mode === "signin" ? "Need an account? " : "Already have one? ", /*#__PURE__*/React.createElement("a", {
-    onClick: () => {
-      setMode(mode === "signin" ? "signup" : "signin");
-      setMsg("");
-    }
-  }, mode === "signin" ? "Sign up" : "Sign in"))));
+    className: "cloud-btn cloud-btn-primary", disabled: busy
+  }, busy ? "Updating…" : "Update password"), msg && /*#__PURE__*/React.createElement("div", {
+    className: "cloud-msg" + (/success/i.test(msg) ? " ok" : "")
+  }, msg)));
 }
 
 // ---------------------------------------------------------------------------
@@ -7179,6 +7186,7 @@ function ReportComposer({
 }
 function CloudApp() {
   const [session, setSession] = useState(null);
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [profile, setProfile] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [openData, setOpenData] = useState(null);
@@ -7219,7 +7227,10 @@ function CloudApp() {
     });
     const {
       data: sub
-    } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    } = sb.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") setRecoveringPassword(true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
   useEffect(() => {
@@ -7246,6 +7257,9 @@ function CloudApp() {
   if (booting) return /*#__PURE__*/React.createElement("div", {
     className: "cloud-splash"
   }, "Loading…");
+  if (recoveringPassword && session) return /*#__PURE__*/React.createElement(ResetPasswordScreen, {
+    onDone: () => setRecoveringPassword(false)
+  });
   if (!session) return /*#__PURE__*/React.createElement(AuthScreen, null);
   if (!profile) return /*#__PURE__*/React.createElement("div", {
     className: "cloud-splash"
