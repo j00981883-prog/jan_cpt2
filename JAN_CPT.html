@@ -4232,6 +4232,54 @@ main{max-width:1080px;margin:0 auto}
 .fr-Progress{border-left-color:#2E7D52}
 .fr-Other{border-left-color:#8296A8}
 
+/* 2026 field refresh — clearer hierarchy and a calmer, more polished card
+   system without sacrificing the large touch targets field staff need. */
+.field-main{padding-top:28px}
+.field-welcome{margin-bottom:22px}
+.field-kicker{display:flex;align-items:center;gap:8px;margin-bottom:7px;color:#2E789F;
+  font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.field-kicker::before{content:"";width:22px;height:3px;border-radius:999px;background:#F2A900}
+.field-h1{margin:0 0 5px;font-size:28px;line-height:1.12;color:#071A33}
+.field-subtitle{margin:0;color:#6B8194;font-size:14px;line-height:1.45}
+.field-proj-list{gap:13px}
+.field-proj-btn{position:relative;justify-content:flex-start;gap:14px;overflow:hidden;padding:17px 18px;
+  border:1px solid rgba(177,199,217,.72);border-left:0;border-radius:17px;
+  box-shadow:0 8px 24px rgba(11,61,110,.09)}
+.field-proj-btn::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;
+  background:linear-gradient(180deg,#2E9BD6,#0B3D6E)}
+.field-proj-icon{width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:13px;
+  color:#0B3D6E;background:linear-gradient(145deg,#E7F4FC,#D7EAF7);font-size:21px}
+.field-proj-copy{flex:1;min-width:0}
+.field-proj-name{display:block;overflow:hidden;text-overflow:ellipsis;font-size:16px;line-height:1.25}
+.field-proj-meta{display:block;margin-top:4px;color:#7C8FA1;font-size:12px;font-weight:600}
+.field-chev{width:31px;height:31px;display:grid;place-items:center;border-radius:50%;background:#EEF5FA;
+  color:#2E789F;font-size:22px;transition:transform .15s,background .15s}
+.field-proj-btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(11,61,110,.14)}
+.field-proj-btn:hover .field-chev{transform:translateX(2px);background:#DDEEF8}
+.field-proj-hdr{margin:16px 16px 9px;padding:17px 18px 18px;border:1px solid rgba(187,207,223,.7);
+  border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(239,247,252,.96));
+  box-shadow:0 8px 24px rgba(11,61,110,.08)}
+.field-back{margin-bottom:10px;font-size:13px;letter-spacing:.01em}
+.field-proj-label{color:#7C8FA1;font-size:10.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;margin-bottom:4px}
+.field-proj-title{font-size:22px;color:#071A33}
+.fv-bar{box-shadow:0 4px 16px rgba(11,61,110,.07)}
+.field-tabs{gap:5px;margin:8px 16px 0;padding:5px;top:72px;border:1px solid #D8E5EF;border-radius:14px;
+  background:rgba(255,255,255,.9);box-shadow:0 5px 18px rgba(11,61,110,.08);backdrop-filter:blur(10px)}
+.field-tab{border:0;border-radius:10px;box-shadow:none;background:transparent;color:#657A8D}
+.field-tab.on{background:linear-gradient(135deg,#0B3D6E,#145987);box-shadow:0 4px 10px rgba(11,61,110,.22)}
+.field-tab-icon{margin-right:7px;font-size:14px}
+.field-body{padding-top:16px}
+.field-progress{padding:13px 15px;margin-bottom:13px;border:1px solid #DCE8F1;border-radius:13px;
+  background:rgba(255,255,255,.85);box-shadow:0 3px 12px rgba(11,61,110,.05)}
+.field-progress-bar{background:#DCE8F0;box-shadow:inset 0 1px 2px rgba(7,26,51,.08)}
+.field-progress span{padding-left:2px;color:#0B3D6E}
+.field-check{border-radius:15px;padding:15px 16px;box-shadow:0 4px 14px rgba(11,61,110,.07)}
+.field-new-report{background:linear-gradient(135deg,#F2A900,#F7C34F);box-shadow:0 8px 20px rgba(192,132,0,.22);
+  transition:transform .12s,box-shadow .12s}
+.field-new-report:active{transform:scale(.985);box-shadow:0 3px 10px rgba(192,132,0,.2)}
+.field-report{border-radius:15px;padding:16px;box-shadow:0 5px 16px rgba(11,61,110,.07)}
+@media(max-width:380px){.field-proj-icon{width:38px;height:38px}.field-proj-btn{gap:11px;padding-right:13px}}
+
 /* Photos */
 .field-photo{margin-bottom:15px;position:relative}
 .field-photo img{width:100%;border-radius:12px;display:block;max-height:280px;object-fit:cover}
@@ -6720,9 +6768,15 @@ function FieldHome({
     onClick: onExit || onSignOut
   }, onExit ? "Exit" : "Sign out")), !openId && /*#__PURE__*/React.createElement("main", {
     className: "field-main"
-  }, /*#__PURE__*/React.createElement("h1", {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field-welcome"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field-kicker"
+  }, "Field workspace"), /*#__PURE__*/React.createElement("h1", {
     className: "field-h1"
-  }, "Pick a project"), projects === null && /*#__PURE__*/React.createElement("div", {
+  }, "Choose a project"), /*#__PURE__*/React.createElement("p", {
+    className: "field-subtitle"
+  }, "Start a walkthrough, complete the checklist, or log a field report.")), projects === null && /*#__PURE__*/React.createElement("div", {
     className: "field-loading"
   }, "Loading…"), projects && projects.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-empty"
@@ -6732,8 +6786,18 @@ function FieldHome({
     key: p.id,
     className: "field-proj-btn",
     onClick: () => setOpenId(p.id)
-  }, p.title, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "field-proj-icon",
+    "aria-hidden": "true"
+  }, "⌖"), /*#__PURE__*/React.createElement("span", {
+    className: "field-proj-copy"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "field-proj-name"
+  }, p.title), /*#__PURE__*/React.createElement("span", {
+    className: "field-proj-meta"
+  }, "Open field workspace")), /*#__PURE__*/React.createElement("span", {
     className: "field-chev"
+    ,"aria-hidden": "true"
   }, "›"))))), openId && /*#__PURE__*/React.createElement(FieldProject, {
     project: openProj,
     projectId: openId,
@@ -6844,7 +6908,9 @@ function FieldProject({
   }, /*#__PURE__*/React.createElement("a", {
     className: "field-back",
     onClick: onBack
-  }, "‹ Projects"), /*#__PURE__*/React.createElement("div", {
+  }, "‹ All projects"), /*#__PURE__*/React.createElement("div", {
+    className: "field-proj-label"
+  }, "Active field project"), /*#__PURE__*/React.createElement("div", {
     className: "field-proj-title"
   }, project ? project.title : "…")), /*#__PURE__*/React.createElement("div", {
     className: "fv-bar" + (visit ? " fv-on" : "")
@@ -6871,10 +6937,16 @@ function FieldProject({
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-tab" + (tab === "checklist" ? " on" : ""),
     onClick: () => setTab("checklist")
-  }, "Checklist"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "field-tab-icon",
+    "aria-hidden": "true"
+  }, "✓"), "Checklist"), /*#__PURE__*/React.createElement("button", {
     className: "field-tab" + (tab === "reports" ? " on" : ""),
     onClick: () => setTab("reports")
-  }, "Reports")), tab === "checklist" && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "field-tab-icon",
+    "aria-hidden": "true"
+  }, "▤"), "Reports")), tab === "checklist" && /*#__PURE__*/React.createElement("div", {
     className: "field-body"
   }, items && items.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-progress"
@@ -6901,7 +6973,7 @@ function FieldProject({
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-new-report",
     onClick: () => setComposing(true)
-  }, "+ Log a report"), reports === null && /*#__PURE__*/React.createElement("div", {
+  }, "+  Log a field report"), reports === null && /*#__PURE__*/React.createElement("div", {
     className: "field-loading"
   }, "Loading…"), reports && reports.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-empty"
