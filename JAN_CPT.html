@@ -147,6 +147,7 @@ function grantSections(grant) {
     type: "FAA AIG",
     items: GRANT_MILESTONES,
     done: legacy,
+    completionDates: grant && grant.milestoneDates || {},
     grantNo: "",
     popEnd: ""
   }];
@@ -162,6 +163,16 @@ function expandItems(items) {
     } else out.push(m);
   });
   return out;
+}
+
+function shortGrantDate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y.slice(-2)}`;
+}
+function localTodayISO() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 const TUTORIAL_STEPS = (meta, cal) => [{
   icon: "1",
@@ -2616,12 +2627,27 @@ function GrantTab({
     milestones: grant.milestones || {}
   });
   const toggleSectionMs = (si, m) => {
+    const section = sections[si] || {};
+    const nextDone = !section.done?.[m];
+    const today = localTodayISO();
     const next = sections.map((s, i) => i !== si ? s : {
       ...s,
       done: {
         ...(s.done || {}),
-        [m]: !s.done?.[m]
+        [m]: nextDone
+      },
+      completionDates: {
+        ...(s.completionDates || {}),
+        [m]: nextDone ? s.completionDates?.[m] || today : ""
       }
+    });
+    writeSections(next);
+  };
+  const setSectionMsDate = (si, m, value) => {
+    const next = sections.map((s, i) => i !== si ? s : {
+      ...s,
+      done: { ...(s.done || {}), [m]: !!value },
+      completionDates: { ...(s.completionDates || {}), [m]: value }
     });
     writeSections(next);
   };
@@ -2699,7 +2725,8 @@ function GrantTab({
       name: type === "Custom" ? "New grant" : `${type} Grant Administration${n > 1 ? " (" + n + ")" : ""}`,
       type,
       items,
-      done: {}
+      done: {},
+      completionDates: {}
     }]);
   };
   const setDoc = (d, url) => set({
@@ -2797,7 +2824,7 @@ function GrantTab({
       className: "num ms-count"
     }, doneCount, " / ", items.length)), /*#__PURE__*/React.createElement("div", {
       className: "ms-list"
-    }, items.map((m, i) => /*#__PURE__*/React.createElement("label", {
+    }, items.map((m, i) => /*#__PURE__*/React.createElement("div", {
       key: m,
       className: "ms-row rise" + (sec.done?.[m] ? " ms-done" : ""),
       style: {
@@ -2809,7 +2836,17 @@ function GrantTab({
       onChange: () => toggleSectionMs(si, m)
     }), /*#__PURE__*/React.createElement("span", {
       className: "ms-num"
-    }, String(i + 1).padStart(2, "0")), /*#__PURE__*/React.createElement("span", null, m)))));
+    }, String(i + 1).padStart(2, "0")), /*#__PURE__*/React.createElement("span", {
+      className: "ms-label"
+    }, m), /*#__PURE__*/React.createElement("label", {
+      className: "ms-date",
+      title: `Completion date for ${m}`
+    }, /*#__PURE__*/React.createElement("span", null, sec.completionDates?.[m] ? shortGrantDate(sec.completionDates[m]) : "MM/DD/YY"), /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      value: sec.completionDates?.[m] || "",
+      "aria-label": `Completion date for ${m}`,
+      onChange: e => setSectionMsDate(si, m, e.target.value)
+    }))))));
   }), /*#__PURE__*/React.createElement("section", {
     className: "panel rise",
     style: {
@@ -3775,12 +3812,19 @@ main{max-width:1080px;margin:0 auto}
 .ms-count{font-size:13px;font-weight:600;color:var(--blue)}
 .ms-list{display:grid;grid-template-columns:1fr 1fr;gap:4px 22px}
 @media(max-width:700px){.ms-list{grid-template-columns:1fr}}
-.ms-row{display:flex;gap:10px;align-items:center;padding:7px 4px;font-size:13.5px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .15s}
+.ms-row{display:flex;gap:10px;align-items:center;padding:8px 4px;font-size:13.5px;border-bottom:1px solid var(--line);transition:background .15s}
 .ms-row:hover{background:#F4F9FD}
-.ms-row input{accent-color:var(--blue);width:15px;height:15px;flex:none}
+.ms-row>input{accent-color:var(--blue);width:16px;height:16px;flex:none;cursor:pointer}
 .ms-num{font-family:var(--mono);font-size:11px;color:var(--dim);flex:none}
-.ms-done span:last-child{color:var(--dim)}
+.ms-label{flex:1;min-width:120px;color:var(--ink);line-height:1.35}
+.ms-done .ms-label{color:var(--dim)}
 .ms-done .ms-num{color:var(--green)}
+.ms-date{position:relative;flex:none;display:flex;align-items:center;justify-content:flex-end;min-width:82px;
+  color:var(--dim);font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer}
+.ms-date>span{padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;color:#5A6B7C}
+.ms-done .ms-date>span{border-color:#B9E3C6;background:#EEF8F1;color:#2E7D52}
+.ms-date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+@media(max-width:520px){.ms-row{flex-wrap:wrap}.ms-label{min-width:calc(100% - 58px)}.ms-date{margin-left:58px}}
 .track-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
 .doc-list{display:flex;flex-direction:column}
 .doc-row{display:grid;grid-template-columns:220px 1fr auto auto;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
