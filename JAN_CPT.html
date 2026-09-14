@@ -5281,6 +5281,8 @@ function NewProjectModal({
     primeBudget: "",
     engineeringBudget: "",
     startISO: "",
+    targetISO: "",
+    notes: "",
     days: "70",
     fyStartMonth: "10",
     budgetVarianceLimit: "0.02",
@@ -5628,7 +5630,8 @@ function NewProjectModal({
     }
     setBusy(true);
     setErr("");
-    const days = n(f.days) || 70;
+    const datedDays = f.startISO && f.targetISO ? Math.max(1, Math.ceil((new Date(f.targetISO + "T12:00:00") - new Date(f.startISO + "T12:00:00")) / 86400000)) : 0;
+    const days = f.projectCategory === "internal" ? (datedDays || n(f.days) || 70) : (n(f.days) || 70);
     const prime = n(f.primeBudget),
       eng = n(f.engineeringBudget);
     const funding = [];
@@ -5651,6 +5654,8 @@ function NewProjectModal({
       title: f.title.trim(),
       projectCategory: f.projectCategory,
       location: f.location.trim(),
+      targetISO: f.targetISO,
+      notes: f.notes.trim(),
       primeContractor: f.primeContractor,
       engineerOfRecord: f.engineerOfRecord,
       subEngineer: f.subEngineer,
@@ -5744,7 +5749,62 @@ function NewProjectModal({
     value: f.projectCategory,
     onChange: set("projectCategory"),
     style: { width: "100%", padding: "10px 12px", border: "1px solid #DCE6F0", borderRadius: 9, fontSize: 15, background: "#fff", color: "#16232F" }
-  }, /*#__PURE__*/React.createElement("option", { value: "capital" }, "Capital project"), /*#__PURE__*/React.createElement("option", { value: "internal" }, "Internal / Maintenance"))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("option", { value: "capital" }, "Capital project"), /*#__PURE__*/React.createElement("option", { value: "internal" }, "Internal / Maintenance"))), f.projectCategory === "internal" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "np-scan-note",
+    style: { marginBottom: 14 }
+  }, "Simple setup — only the basics are needed. You can add documents after creating the project."), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Project name"), /*#__PURE__*/React.createElement("input", {
+    value: f.title,
+    onChange: set("title"),
+    placeholder: "e.g. Terminal lighting repair"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("input", {
+    value: f.location,
+    onChange: set("location"),
+    placeholder: "e.g. Terminal, Building A, Airfield"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "cloud-f2"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Project number (optional)"), /*#__PURE__*/React.createElement("input", {
+    value: f.projectNo,
+    onChange: set("projectNo"),
+    placeholder: "Add only if needed"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Engineer (optional)"), /*#__PURE__*/React.createElement("input", {
+    value: f.engineerOfRecord,
+    onChange: set("engineerOfRecord"),
+    placeholder: "Add only if assigned"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Budget ($)"), /*#__PURE__*/React.createElement("input", {
+    value: f.primeBudget,
+    onChange: set("primeBudget"),
+    inputMode: "decimal",
+    placeholder: "0"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Start date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: f.startISO,
+    onChange: set("startISO")
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Target completion"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: f.targetISO,
+    onChange: set("targetISO")
+  }))), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Notes (optional)"), /*#__PURE__*/React.createElement("textarea", {
+    rows: 4,
+    value: f.notes,
+    onChange: set("notes"),
+    placeholder: "Add a short description or anything the team should know"
+  }))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "np-charter"
   }, /*#__PURE__*/React.createElement("div", {
     className: "np-charter-row"
@@ -5922,7 +5982,7 @@ function NewProjectModal({
     value: f.local,
     onChange: set("local"),
     inputMode: "decimal"
-  }))), err && /*#__PURE__*/React.createElement("div", {
+  })))), err && /*#__PURE__*/React.createElement("div", {
     className: "cloud-msg"
   }, err), /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-actions"
