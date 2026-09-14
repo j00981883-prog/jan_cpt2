@@ -3942,6 +3942,18 @@ main{max-width:1080px;margin:0 auto}
 .cloud-bar{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
 .cloud-bar-actions{display:flex;gap:10px}
 .cloud-h2{margin:0;font-size:27px;color:#fff;font-weight:800;letter-spacing:.01em}
+.cloud-project-tabs{display:flex;gap:6px;margin:-4px 0 18px;padding:5px;width:max-content;max-width:100%;
+  border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(7,26,51,.28)}
+.cloud-project-tab{border:0;border-radius:8px;padding:9px 14px;background:transparent;color:#BDD3E5;
+  font:700 13px/1 inherit;cursor:pointer;white-space:nowrap}
+.cloud-project-tab.on{background:#fff;color:#0B3D6E;box-shadow:0 3px 10px rgba(0,0,0,.14)}
+.cloud-project-tab b{display:inline-grid;place-items:center;min-width:20px;height:20px;margin-left:6px;padding:0 5px;
+  border-radius:999px;background:rgba(46,155,214,.14);font-size:11px}
+.cloud-type{margin-top:10px;display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(159,192,220,.35);
+  border-radius:999px;padding:4px 9px;background:rgba(7,26,51,.18);color:#CFE0EC;font-size:10.5px;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase}
+button.cloud-type{cursor:pointer;font-family:inherit}
+button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-sub{color:#9FC0DC;font-size:14px;margin-top:4px}
 .cloud-file{position:relative;overflow:hidden;display:inline-block}
 .cloud-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
@@ -3970,6 +3982,7 @@ main{max-width:1080px;margin:0 auto}
 .cloud-modal-actions{display:flex;gap:10px;margin-top:20px}
 .btn-back{background:rgba(255,255,255,.16)!important}
 @media(max-width:640px){.cloud-f2,.cloud-f3{grid-template-columns:1fr}}
+@media(max-width:640px){.cloud-project-tabs{width:100%;box-sizing:border-box}.cloud-project-tab{flex:1;padding:9px 7px;font-size:12px}.cloud-project-tab b{display:none}}
 
 /* ===== AI ASSISTANT (Beta 3) ===== */
 @keyframes aiFabIn{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
@@ -4787,6 +4800,11 @@ function summarize(p) {
     label: stop ? "Hard stop" : watch ? "Watch" : "On track"
   };
 }
+function projectCategory(p) {
+  const saved = p && p.meta && p.meta.projectCategory;
+  if (saved === "internal" || saved === "capital") return saved;
+  return /\b(internal|maintenance|repair|facility|facilities|preventive)\b/i.test((p && p.title) || "") ? "internal" : "capital";
+}
 function ProjectPicker({
   profile,
   onOpen,
@@ -4799,6 +4817,7 @@ function ProjectPicker({
 }) {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [projectTab, setProjectTab] = useState("all");
   const [clock, setClock] = useState("");
   useEffect(() => {
     if (!display) return;
@@ -4885,6 +4904,23 @@ function ProjectPicker({
       alert("Import failed: " + (e.message || e));
     }
   }
+  async function changeProjectCategory(e, project) {
+    e.stopPropagation();
+    if (!isEditor) return;
+    const nextCategory = projectCategory(project) === "capital" ? "internal" : "capital";
+    const nextMeta = { ...(project.meta || {}), projectCategory: nextCategory };
+    setProjects(list => (list || []).map(p => p.id === project.id ? { ...p, meta: nextMeta } : p));
+    const { error } = await sb.from("projects").update({ meta: nextMeta }).eq("id", project.id);
+    if (error) {
+      setProjects(list => (list || []).map(p => p.id === project.id ? project : p));
+      alert("Couldn't change project type: " + error.message);
+    }
+  }
+  const counts = (projects || []).reduce((a, p) => {
+    a[projectCategory(p)]++;
+    return a;
+  }, { capital: 0, internal: 0 });
+  const visibleProjects = display || projectTab === "all" ? (projects || []) : (projects || []).filter(p => projectCategory(p) === projectTab);
   return /*#__PURE__*/React.createElement("div", {
     className: "cloud-shell" + (display ? " cloud-display" : "")
   }, /*#__PURE__*/React.createElement("div", {
@@ -4955,7 +4991,17 @@ function ProjectPicker({
   })), /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-gold",
     onClick: () => setCreating(true)
-  }, "+ New project"))), display && projects && projects.length > 0 && (() => {
+  }, "+ New project"))), !display && projects && projects.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "cloud-project-tabs",
+    role: "tablist",
+    "aria-label": "Project type"
+  }, [["all", "All", projects.length], ["capital", "Capital", counts.capital], ["internal", "Internal / Maintenance", counts.internal]].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t[0],
+    role: "tab",
+    "aria-selected": projectTab === t[0],
+    className: "cloud-project-tab" + (projectTab === t[0] ? " on" : ""),
+    onClick: () => setProjectTab(t[0])
+  }, t[1], /*#__PURE__*/React.createElement("b", null, t[2])))), display && projects && projects.length > 0 && (() => {
     const stats = projects.map(p => summarize(p));
     const stop = stats.filter(s => s.stop).length;
     const watch = stats.filter(s => !s.stop && s.watch).length;
@@ -4979,9 +5025,11 @@ function ProjectPicker({
     }, /*#__PURE__*/React.createElement("b", null, "$", Math.round(carrying / 1000), "K"), /*#__PURE__*/React.createElement("i", null, "JMAA carrying")));
   })(), projects && projects.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "cloud-empty"
-  }, "No projects yet.", isEditor ? " Create one, or import a tracker .json export." : ""), /*#__PURE__*/React.createElement("div", {
+  }, "No projects yet.", isEditor ? " Create one, or import a tracker .json export." : ""), projects && projects.length > 0 && visibleProjects.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "cloud-empty"
+  }, "No projects in this section yet."), /*#__PURE__*/React.createElement("div", {
     className: "cloud-grid"
-  }, (projects || []).map(p => {
+  }, visibleProjects.map(p => {
     const meta = p.meta || {};
     const st = summarize(p);
     const {
@@ -5007,7 +5055,13 @@ function ProjectPicker({
       className: "cloud-pill " + (stop ? "cloud-pill-red" : watch ? "cloud-pill-amber" : "cloud-pill-green")
     }, stop ? "Hard stop" : watch ? "Watch" : "On track")), /*#__PURE__*/React.createElement("div", {
       className: "cloud-card-sub"
-    }, meta.primeContractor || "—"), /*#__PURE__*/React.createElement("div", {
+  }, meta.primeContractor || "—"), isEditor && !display ? /*#__PURE__*/React.createElement("button", {
+    className: "cloud-type",
+    title: "Click to move this project to the other section",
+    onClick: e => changeProjectCategory(e, p)
+  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project") : /*#__PURE__*/React.createElement("span", {
+    className: "cloud-type"
+  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project"), /*#__PURE__*/React.createElement("div", {
       className: "cloud-card-stats"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Budget"), /*#__PURE__*/React.createElement("b", null, "$", Math.round(total).toLocaleString())), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Week"), /*#__PURE__*/React.createElement("b", null, elapsed, " / ", weeks)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Cost variance"), /*#__PURE__*/React.createElement("b", {
       className: cvar > blim ? "cloud-bad" : ""
@@ -5186,6 +5240,7 @@ function NewProjectModal({
 }) {
   const [f, setF] = useState({
     title: "",
+    projectCategory: "capital",
     primeContractor: "",
     engineerOfRecord: "",
     subEngineer: "",
@@ -5560,6 +5615,7 @@ function NewProjectModal({
     });
     const meta = {
       title: f.title.trim(),
+      projectCategory: f.projectCategory,
       primeContractor: f.primeContractor,
       engineerOfRecord: f.engineerOfRecord,
       subEngineer: f.subEngineer,
@@ -5647,7 +5703,13 @@ function NewProjectModal({
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("h3", {
     className: "cloud-modal-h"
-  }, "New project"), /*#__PURE__*/React.createElement("div", {
+  }, "New project"), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Project type"), /*#__PURE__*/React.createElement("select", {
+    value: f.projectCategory,
+    onChange: set("projectCategory"),
+    style: { width: "100%", padding: "10px 12px", border: "1px solid #DCE6F0", borderRadius: 9, fontSize: 15, background: "#fff", color: "#16232F" }
+  }, /*#__PURE__*/React.createElement("option", { value: "capital" }, "Capital project"), /*#__PURE__*/React.createElement("option", { value: "internal" }, "Internal / Maintenance"))), /*#__PURE__*/React.createElement("div", {
     className: "np-charter"
   }, /*#__PURE__*/React.createElement("div", {
     className: "np-charter-row"
