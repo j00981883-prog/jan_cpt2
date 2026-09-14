@@ -4427,6 +4427,11 @@ main{max-width:1080px;margin:0 auto}
 const SUPABASE_URL = window.JMAA_CONFIG.supabaseUrl;
 const SUPABASE_KEY = window.JMAA_CONFIG.supabaseAnonKey;
 const CONFIGURED = SUPABASE_URL && !SUPABASE_URL.includes("YOUR_") && SUPABASE_KEY && !SUPABASE_KEY.includes("YOUR_");
+// Capture recovery intent before the Supabase client exchanges the URL token
+// and removes its hash. Without this, a valid email link can sign the user in
+// but the app no longer knows to show the new-password form.
+const RECOVERY_URL_SEEN = /(?:^|[?#&])type=recovery(?:&|$)/i.test(window.location.search + window.location.hash);
+if (RECOVERY_URL_SEEN) sessionStorage.setItem("jan-cpt-password-recovery", "1");
 let sb = null;
 let BOOT_ERROR = "";
 if (CONFIGURED) {
@@ -7186,7 +7191,7 @@ function ReportComposer({
 }
 function CloudApp() {
   const [session, setSession] = useState(null);
-  const [recoveringPassword, setRecoveringPassword] = useState(false);
+  const [recoveringPassword, setRecoveringPassword] = useState(() => RECOVERY_URL_SEEN || sessionStorage.getItem("jan-cpt-password-recovery") === "1");
   const [profile, setProfile] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [openData, setOpenData] = useState(null);
@@ -7229,7 +7234,10 @@ function CloudApp() {
       data: sub
     } = sb.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      if (event === "PASSWORD_RECOVERY") setRecoveringPassword(true);
+      if (event === "PASSWORD_RECOVERY") {
+        sessionStorage.setItem("jan-cpt-password-recovery", "1");
+        setRecoveringPassword(true);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -7258,7 +7266,13 @@ function CloudApp() {
     className: "cloud-splash"
   }, "Loading…");
   if (recoveringPassword && session) return /*#__PURE__*/React.createElement(ResetPasswordScreen, {
-    onDone: () => setRecoveringPassword(false)
+    onDone: () => {
+      sessionStorage.removeItem("jan-cpt-password-recovery");
+      setRecoveringPassword(false);
+      if (window.history && /^https?:/i.test(window.location.href)) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
   });
   if (!session) return /*#__PURE__*/React.createElement(AuthScreen, null);
   if (!profile) return /*#__PURE__*/React.createElement("div", {
