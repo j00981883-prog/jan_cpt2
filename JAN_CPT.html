@@ -1561,7 +1561,7 @@ function Tracker({
     meta: meta
   })), /*#__PURE__*/React.createElement("footer", {
     className: "ftr"
-  }, "Charter limits: budget +", (meta.budgetVarianceLimit * 100).toFixed(0), "%, schedule +", meta.timeVarianceLimitPerWeek, " days/week — both hard stops · Data saves to this device; use Export for backup or transfer"), updateOpen && /*#__PURE__*/React.createElement(UpdatePanel, {
+  }, "Charter limits: budget +", (meta.budgetVarianceLimit * 100).toFixed(0), "%, schedule +", meta.timeVarianceLimitPerWeek, " days/week — both hard stops · Changes save securely to the project workspace; use Export for backup or transfer"), updateOpen && /*#__PURE__*/React.createElement(UpdatePanel, {
     text: updateText,
     setText: setUpdateText,
     ops: updateOps,
@@ -2541,7 +2541,7 @@ function BoardMemo({
     key: f.source
   }, /*#__PURE__*/React.createElement("td", {
     className: "memo-metric"
-  }, f.source), /*#__PURE__*/React.createElement("td", null, fmtMoney2(f.amount), " (", (f.amount / meta.fundingTotal * 100).toFixed(1), "%)"))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+  }, f.source), /*#__PURE__*/React.createElement("td", null, fmtMoney2(f.amount), " (", (Number(f.amount || 0) / (Number(meta.fundingTotal) || 1) * 100).toFixed(1), "%)"))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     className: "memo-metric"
   }, "Total project funding"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, fmtMoney2(meta.fundingTotal)))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     className: "memo-metric"
@@ -2709,7 +2709,15 @@ function GrantTab({
     }
   });
   const msPct = execSum.msDone / (execSum.msTotal || 1) * 100;
-  const fundGap = meta.fundingTotal - meta.totalBudget;
+  const fundingTotal = Number(meta.fundingTotal) || 0;
+  const constructionBudget = Number(meta.totalBudget) || 0;
+  const fundGap = fundingTotal - constructionBudget;
+  const fundingPct = amount => fundingTotal > 0 ? Number(amount || 0) / fundingTotal * 100 : 0;
+  const fundingNote = fundGap > 0
+    ? `Total funding exceeds the construction budget (${fmtMoney(constructionBudget)}) by ${fmtMoney(fundGap)}, covering non-construction project costs.`
+    : fundGap < 0
+      ? `Total funding is ${fmtMoney(Math.abs(fundGap))} below the construction budget (${fmtMoney(constructionBudget)}). Confirm that every funding source has been entered.`
+      : `Total funding matches the construction budget (${fmtMoney(constructionBudget)}).`;
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
   }, /*#__PURE__*/React.createElement("section", {
@@ -2720,10 +2728,10 @@ function GrantTab({
     key: f.source,
     className: "fund-seg",
     style: {
-      width: `${f.amount / meta.fundingTotal * 100}%`,
+      width: `${fundingPct(f.amount)}%`,
       background: f.color
     },
-    title: `${f.source}: ${fmtMoney(f.amount)} (${(f.amount / meta.fundingTotal * 100).toFixed(1)}%)`
+    title: `${f.source}: ${fmtMoney(f.amount)} (${fundingPct(f.amount).toFixed(1)}%)`
   }))), /*#__PURE__*/React.createElement("div", {
     className: "contract-rows"
   }, meta.funding.map(f => /*#__PURE__*/React.createElement("div", {
@@ -2736,7 +2744,7 @@ function GrantTab({
     }
   }), f.source), /*#__PURE__*/React.createElement("span", {
     className: "dim"
-  }, (f.amount / meta.fundingTotal * 100).toFixed(1), "% of project funding"), /*#__PURE__*/React.createElement("span", {
+  }, fundingPct(f.amount).toFixed(1), "% of project funding"), /*#__PURE__*/React.createElement("span", {
     className: "num"
   }, fmtMoney2(f.amount)))), /*#__PURE__*/React.createElement("div", {
     className: "crow crow-total"
@@ -2744,7 +2752,7 @@ function GrantTab({
     className: "num"
   }, fmtMoney2(meta.fundingTotal)))), /*#__PURE__*/React.createElement("div", {
     className: "gauge-note"
-  }, "Total funding exceeds the construction budget (", fmtMoney(meta.totalBudget), ") by ", fmtMoney(fundGap), ", covering non-construction project costs. Confirm the allocation with Finance — the split determines which costs are reimbursable against each source.")), sections.map((sec, si) => {
+  }, fundingNote, " Confirm the allocation with Finance — the split determines which costs are reimbursable against each source.")), sections.map((sec, si) => {
     const items = expandItems(sec.items);
     const doneCount = items.filter(m => sec.done?.[m]).length;
     const pct = items.length ? doneCount / items.length * 100 : 0;
