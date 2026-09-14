@@ -3984,6 +3984,39 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 @media(max-width:640px){.cloud-f2,.cloud-f3{grid-template-columns:1fr}}
 @media(max-width:640px){.cloud-project-tabs{width:100%;box-sizing:border-box}.cloud-project-tab{flex:1;padding:9px 7px;font-size:12px}.cloud-project-tab b{display:none}}
 
+/* ===== SIMPLE INTERNAL / MAINTENANCE PROJECT ===== */
+.internal-app{min-height:100vh;background:linear-gradient(145deg,#071A33,#0B4475);padding-bottom:70px}
+.internal-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 26px;
+  border-bottom:1px solid rgba(255,255,255,.12);color:#fff}
+.internal-back{border:0;background:transparent;color:#B9D8EB;font:700 14px/1 inherit;cursor:pointer}
+.internal-head-title{flex:1;font-family:var(--disp);font-size:19px;font-weight:700}
+.internal-save{border:0;border-radius:9px;padding:10px 17px;background:var(--gold);color:#071A33;font:800 13px/1 inherit;cursor:pointer}
+.internal-save:disabled{opacity:.55}
+.internal-wrap{max-width:900px;margin:0 auto;padding:28px 22px}
+.internal-tabs{display:flex;gap:7px;margin-bottom:18px}
+.internal-tab{border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:9px 15px;background:rgba(7,26,51,.28);
+  color:#C9DDEB;font:700 13px/1 inherit;cursor:pointer}
+.internal-tab.on{background:#fff;color:#0B3D6E}
+.internal-card{background:#fff;border-radius:17px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.22)}
+.internal-card h2{margin:0 0 5px;color:#0B3D6E;font-size:21px}
+.internal-help{margin:0 0 20px;color:#73889A;font-size:13.5px}
+.internal-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.internal-field{display:block}
+.internal-field.wide{grid-column:1/-1}
+.internal-field>span{display:block;margin-bottom:6px;color:#5A6B7C;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.internal-field input,.internal-field textarea{width:100%;box-sizing:border-box;border:1px solid #D7E4EE;border-radius:9px;
+  padding:11px 12px;background:#FBFDFE;color:#16232F;font:14px/1.4 inherit}
+.internal-field textarea{min-height:110px;resize:vertical}
+.internal-field input:focus,.internal-field textarea:focus{outline:none;border-color:#2E9BD6;box-shadow:0 0 0 3px rgba(46,155,214,.14)}
+.internal-field-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.internal-field-head span{color:#5A6B7C;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.internal-remove{border:0;background:transparent;color:#A84A4A;font:700 11px/1 inherit;cursor:pointer}
+.internal-adds{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid #E5EDF3}
+.internal-add{border:1px dashed #9FC0DC;border-radius:9px;padding:8px 11px;background:#F4F9FD;color:#1B6F9E;font:700 12px/1 inherit;cursor:pointer}
+.internal-msg{margin-top:14px;color:#2E7D52;font-size:13px;font-weight:700}
+.internal-docs .pad{padding:0}.internal-docs .panel{margin:0}
+@media(max-width:640px){.internal-head{padding:15px}.internal-wrap{padding:18px 12px}.internal-card{padding:18px}.internal-grid{grid-template-columns:1fr}.internal-field.wide{grid-column:auto}.internal-head-title{font-size:15px}}
+
 /* ===== AI ASSISTANT (Beta 3) ===== */
 @keyframes aiFabIn{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
 @keyframes aiPanelIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
@@ -5241,6 +5274,7 @@ function NewProjectModal({
   const [f, setF] = useState({
     title: "",
     projectCategory: "capital",
+    location: "",
     primeContractor: "",
     engineerOfRecord: "",
     subEngineer: "",
@@ -5616,6 +5650,7 @@ function NewProjectModal({
     const meta = {
       title: f.title.trim(),
       projectCategory: f.projectCategory,
+      location: f.location.trim(),
       primeContractor: f.primeContractor,
       engineerOfRecord: f.engineerOfRecord,
       subEngineer: f.subEngineer,
@@ -5811,6 +5846,12 @@ function NewProjectModal({
     value: f.title,
     onChange: set("title"),
     placeholder: "e.g. HKS Taxiway A Rehabilitation"
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "cloud-f"
+  }, /*#__PURE__*/React.createElement("span", null, "Project location"), /*#__PURE__*/React.createElement("input", {
+    value: f.location,
+    onChange: set("location"),
+    placeholder: "e.g. JAN Terminal, Building A, Airfield"
   })), /*#__PURE__*/React.createElement("div", {
     className: "cloud-f2"
   }, /*#__PURE__*/React.createElement("label", {
@@ -7316,6 +7357,92 @@ function ReportComposer({
     onClick: save
   }, busy ? stage || "Saving…" : "Save report"))));
 }
+function InternalProject({ projectId, initial, isEditor, onBack }) {
+  const [meta, setMeta] = useState({ ...(initial.meta || {}) });
+  const [sched, setSched] = useState({ ...(initial.sched || {}) });
+  const [grant, setGrant] = useState(initial.grant || { docs: {} });
+  const [tab, setTab] = useState("details");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [showProjectNo, setShowProjectNo] = useState(!!meta.projectNo);
+  const [showEngineer, setShowEngineer] = useState(!!meta.engineerOfRecord);
+  const setM = key => e => setMeta(m => ({ ...m, [key]: e.target.value }));
+  const setS = key => e => setSched(s => ({ ...s, [key]: e.target.value }));
+  async function save() {
+    if (!String(meta.title || "").trim()) { setMsg("Project name is required."); return; }
+    setBusy(true);
+    setMsg("");
+    const nextMeta = {
+      ...meta,
+      title: String(meta.title).trim(),
+      location: String(meta.location || "").trim(),
+      projectNo: showProjectNo ? String(meta.projectNo || "").trim() : "",
+      engineerOfRecord: showEngineer ? String(meta.engineerOfRecord || "").trim() : "",
+      primeBudget: Number(meta.primeBudget) || 0,
+      totalBudget: Number(meta.primeBudget) || 0,
+      projectCategory: "internal"
+    };
+    const { error } = await sb.from("projects").update({ title: nextMeta.title, meta: nextMeta, sched }).eq("id", projectId);
+    setBusy(false);
+    if (error) { setMsg(error.message); return; }
+    setMeta(nextMeta);
+    setMsg("Saved");
+    setTimeout(() => setMsg(""), 2500);
+  }
+  function removeField(key) {
+    setMeta(m => ({ ...m, [key]: "" }));
+    if (key === "projectNo") setShowProjectNo(false);
+    if (key === "engineerOfRecord") setShowEngineer(false);
+  }
+  return /*#__PURE__*/React.createElement("div", { className: "internal-app" }, /*#__PURE__*/React.createElement("header", {
+    className: "internal-head"
+  }, /*#__PURE__*/React.createElement("button", { className: "internal-back", onClick: onBack }, "← All projects"), /*#__PURE__*/React.createElement("div", {
+    className: "internal-head-title"
+  }, meta.title || "Internal project"), isEditor && /*#__PURE__*/React.createElement("button", {
+    className: "internal-save", onClick: save, disabled: busy
+  }, busy ? "Saving…" : "Save changes")), /*#__PURE__*/React.createElement("main", { className: "internal-wrap" }, /*#__PURE__*/React.createElement("div", {
+    className: "internal-tabs"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "internal-tab" + (tab === "details" ? " on" : ""), onClick: () => setTab("details")
+  }, "Project details"), /*#__PURE__*/React.createElement("button", {
+    className: "internal-tab" + (tab === "documents" ? " on" : ""), onClick: () => setTab("documents")
+  }, "Documents")), tab === "details" ? /*#__PURE__*/React.createElement("section", { className: "internal-card" }, /*#__PURE__*/React.createElement("h2", null, "Internal / Maintenance"), /*#__PURE__*/React.createElement("p", {
+    className: "internal-help"
+  }, "Only keep the information this project needs."), /*#__PURE__*/React.createElement("div", { className: "internal-grid" }, /*#__PURE__*/React.createElement("label", {
+    className: "internal-field wide"
+  }, /*#__PURE__*/React.createElement("span", null, "Project name"), /*#__PURE__*/React.createElement("input", {
+    value: meta.title || "", onChange: setM("title"), disabled: !isEditor
+  })), /*#__PURE__*/React.createElement("label", { className: "internal-field wide" }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("input", {
+    value: meta.location || "", onChange: setM("location"), disabled: !isEditor, placeholder: "Building, terminal, airfield area, or address"
+  })), showProjectNo && /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("div", {
+    className: "internal-field-head"
+  }, /*#__PURE__*/React.createElement("span", null, "Project number"), isEditor && /*#__PURE__*/React.createElement("button", {
+    type: "button", className: "internal-remove", onClick: () => removeField("projectNo")
+  }, "Remove")), /*#__PURE__*/React.createElement("input", {
+    value: meta.projectNo || "", onChange: setM("projectNo"), disabled: !isEditor
+  })), showEngineer && /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("div", {
+    className: "internal-field-head"
+  }, /*#__PURE__*/React.createElement("span", null, "Engineer"), isEditor && /*#__PURE__*/React.createElement("button", {
+    type: "button", className: "internal-remove", onClick: () => removeField("engineerOfRecord")
+  }, "Remove")), /*#__PURE__*/React.createElement("input", {
+    value: meta.engineerOfRecord || "", onChange: setM("engineerOfRecord"), disabled: !isEditor
+  })), /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("span", null, "Budget"), /*#__PURE__*/React.createElement("input", {
+    type: "number", min: "0", value: meta.primeBudget || "", onChange: setM("primeBudget"), disabled: !isEditor, placeholder: "0"
+  })), /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("span", null, "Start date"), /*#__PURE__*/React.createElement("input", {
+    type: "date", value: sched.startISO || "", onChange: setS("startISO"), disabled: !isEditor
+  })), /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("span", null, "Target completion"), /*#__PURE__*/React.createElement("input", {
+    type: "date", value: meta.internalCompletion || "", onChange: setM("internalCompletion"), disabled: !isEditor
+  })), /*#__PURE__*/React.createElement("label", { className: "internal-field wide" }, /*#__PURE__*/React.createElement("span", null, "Notes"), /*#__PURE__*/React.createElement("textarea", {
+    value: meta.internalNotes || "", onChange: setM("internalNotes"), disabled: !isEditor, placeholder: "Scope, work requested, contacts, or next steps"
+  }))), isEditor && /*#__PURE__*/React.createElement("div", { className: "internal-adds" }, !showProjectNo && /*#__PURE__*/React.createElement("button", {
+    className: "internal-add", onClick: () => setShowProjectNo(true)
+  }, "+ Project number"), !showEngineer && /*#__PURE__*/React.createElement("button", {
+    className: "internal-add", onClick: () => setShowEngineer(true)
+  }, "+ Engineer")), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : /*#__PURE__*/React.createElement("div", {
+    className: "internal-docs"
+  }, /*#__PURE__*/React.createElement(Documents, { projectId, isEditor, grant, setGrant, say: setMsg }))));
+}
+
 function CloudApp() {
   const [session, setSession] = useState(null);
   const [recoveringPassword, setRecoveringPassword] = useState(() => RECOVERY_URL_SEEN || sessionStorage.getItem("jan-cpt-password-recovery") === "1");
@@ -7417,7 +7544,17 @@ function CloudApp() {
       onSignOut: () => sb.auth.signOut()
     });
   }
-  return /*#__PURE__*/React.createElement(React.Fragment, null, openId ? openData ? /*#__PURE__*/React.createElement(Tracker, {
+  return /*#__PURE__*/React.createElement(React.Fragment, null, openId ? openData ? openData.meta?.projectCategory === "internal" ? /*#__PURE__*/React.createElement(InternalProject, {
+    key: openId,
+    projectId: openId,
+    initial: openData,
+    isEditor: profile.role === "editor",
+    onBack: () => {
+      setOpenId(null);
+      setOpenData(null);
+      bump();
+    }
+  }) : /*#__PURE__*/React.createElement(Tracker, {
     key: openId,
     projectId: openId,
     initial: openData,
