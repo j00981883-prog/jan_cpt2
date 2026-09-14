@@ -969,6 +969,62 @@ function Tracker({
               }
             }));
             done.push(`Milestone "${c.name}" ${c.done ? "marked complete" : "cleared"}`);
+          } else if (c.type === "meta" && c.field) {
+            // Only these fields are writable by the assistant. Anything else is
+            // ignored rather than trusted — the model proposing a field name is
+            // not the same as that field being safe to set.
+            const NUMERIC = ["primeBudget", "engineeringBudget", "budgetVarianceLimit", "timeVarianceLimitPerWeek"];
+            const ALLOWED = ["title", "projectNo", "aipNo", "garverProjectNo", "projectManager", "owner", "location", "scope", "primeContractor", "engineerOfRecord", "subEngineer", ...NUMERIC];
+            if (ALLOWED.includes(c.field)) {
+              const val = NUMERIC.includes(c.field) ? Number(c.value) : c.value;
+              setMeta(m => {
+                const next = { ...m, [c.field]: val };
+                // The total is what every variance figure is measured against,
+                // so keep it consistent rather than letting it drift.
+                if (c.field === "primeBudget" || c.field === "engineeringBudget") {
+                  next.totalBudget = (Number(next.primeBudget) || 0) + (Number(next.engineeringBudget) || 0);
+                }
+                return next;
+              });
+              done.push(`${c.field} set to ${c.value}`);
+            }
+          } else if (c.type === "sched" && c.field) {
+            if (["startISO", "days", "fyStartMonth"].includes(c.field)) {
+              const val = c.field === "startISO" ? c.value : Number(c.value);
+              setSched(sc => ({ ...sc, [c.field]: val }));
+              if (c.field === "startISO") setMeta(m => ({ ...m, startDate: c.value }));
+              if (c.field === "days") setMeta(m => ({ ...m, lengthDays: Number(c.value), lengthWeeks: Math.ceil(Number(c.value) / 7) }));
+              done.push(`Schedule ${c.field} set to ${c.value}`);
+            }
+          } else if (c.type === "grant" && c.field) {
+            if (["dbeGoal", "dbePaid", "safetyIncidents", "coCount", "origCompletion", "revCompletion", "revReason"].includes(c.field)) {
+              const numeric = ["dbeGoal", "dbePaid", "safetyIncidents", "coCount"].includes(c.field);
+              setGrant(g => ({ ...g, [c.field]: numeric ? Number(c.value) : c.value }));
+              done.push(`${c.field} set to ${c.value}`);
+            }
+          } else if (c.type === "funding" && c.source) {
+            setMeta(m => {
+              const funding = [...(m.funding || [])];
+              const i = funding.findIndex(f => f.source === c.source);
+              const amount = Number(c.amount) || 0;
+              if (i >= 0) funding[i] = { ...funding[i], amount };
+              else funding.push({ source: c.source, amount, color: "#2E9BD6" });
+              return { ...m, funding, fundingTotal: funding.reduce((t, f) => t + (Number(f.amount) || 0), 0) };
+            });
+            done.push(`${c.source} funding set to ${c.amount}`);
+          } else if (c.type === "changeorder" && c.number != null) {
+            setGrant(g => {
+              const cos = [...(g.changeOrders || [])];
+              const i = cos.findIndex(x => String(x.number) === String(c.number));
+              const patch = {};
+              if (c.desc != null) patch.desc = c.desc;
+              if (c.cost != null) patch.cost = Number(c.cost);
+              if (c.days != null) patch.days = Number(c.days);
+              if (i >= 0) cos[i] = { ...cos[i], ...patch };
+              else cos.push({ number: String(c.number), desc: "", cost: "", days: "", ...patch });
+              return { ...g, changeOrders: cos };
+            });
+            done.push(`Change order ${c.number} updated`);
           }
         });
         return done;
@@ -1677,7 +1733,7 @@ function LastWalkthrough({ projectId }) {
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, `${visit.items_done}/${visit.items_total}`), React.createElement("i", null, "Checked")),
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, String(visit.note_count || 0)), React.createElement("i", null, "Notes")))),
     stale && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
-    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + n.category }, n.category), React.createElement("span", null, n.note)))));
+    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + n.category }, n.category), React.createElement("span", null, n.note, n.photo_path ? React.createElement(FieldPhoto, { path: n.photo_path, className: "lw-img" }) : null)))));
 }
 
 function Dashboard({
@@ -4131,6 +4187,66 @@ main{max-width:1080px;margin:0 auto}
 .field-btn-primary:disabled{opacity:.5}
 @media(min-width:600px){.field-main,.field-proj,.field-tabs{padding-left:0;padding-right:0}}
 
+/* ===== FIELD POLISH =====
+   The field view is used one-handed, outdoors, in sunlight, often with
+   gloves. That drives every choice here: high contrast, large targets, and
+   no decoration that costs legibility. */
+
+/* Header gets the same sky treatment as the rest of the app rather than a
+   flat navy bar — it was the one screen that looked unfinished. */
+.field-hdr{background:linear-gradient(120deg,#071A33,#0B3D6E 55%,#164B7D);
+  box-shadow:0 2px 14px rgba(7,26,51,.28);position:sticky;top:0;z-index:10}
+.field-hdr::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:linear-gradient(90deg,#2E9BD6,#F2A900)}
+
+.field-app{background:linear-gradient(180deg,#EDF3F9 0%,#F5F8FB 320px)}
+.field-h1{font-size:24px;letter-spacing:-.01em}
+
+/* Project cards: give them a left accent and lift so they read as tappable
+   objects rather than list rows. */
+.field-proj-btn{border-left:4px solid #2E9BD6;box-shadow:0 2px 8px rgba(11,61,110,.08);
+  transition:transform .12s,box-shadow .12s}
+.field-proj-btn:active{transform:scale(.985);box-shadow:0 1px 4px rgba(11,61,110,.12)}
+
+/* Checklist: the tick is the whole interaction, so make it unmistakable. */
+.field-check{box-shadow:0 1px 4px rgba(11,61,110,.06);transition:transform .1s,background .15s}
+.field-check:active{transform:scale(.99)}
+.field-check.done{background:linear-gradient(90deg,#EEF8F1,#F6FBF8);border-color:#B9E3C6}
+.field-check-box{transition:background .18s,border-color .18s,transform .18s}
+.field-check.done .field-check-box{transform:scale(1.06)}
+
+/* Progress bar reads at arm's length. */
+.field-progress-bar{height:12px}
+.field-progress span{font-size:15px}
+
+/* Tabs sit on the tinted background, so give them presence. */
+.field-tab{box-shadow:0 1px 3px rgba(11,61,110,.06)}
+.field-tab.on{box-shadow:0 2px 8px rgba(11,61,110,.22)}
+
+/* Reports read as cards with a colour-coded category, so a Safety note is
+   distinguishable from routine progress at a glance. */
+.field-report{border-left:4px solid #C9D9E8;box-shadow:0 1px 4px rgba(11,61,110,.06)}
+.field-report-cat{letter-spacing:.07em}
+.fr-Safety{border-left-color:#C62828}
+.fr-Maintenance{border-left-color:#F2A900}
+.fr-Progress{border-left-color:#2E7D52}
+.fr-Other{border-left-color:#8296A8}
+
+/* Photos */
+.field-photo{margin-bottom:15px;position:relative}
+.field-photo img{width:100%;border-radius:12px;display:block;max-height:280px;object-fit:cover}
+.field-photo-x{margin-top:9px;width:100%;padding:11px;border:1px solid #DCE6F0;background:#fff;
+  border-radius:10px;font-size:14px;font-weight:600;color:#C62828;font-family:inherit;cursor:pointer}
+.field-photo-add{display:block;text-align:center;padding:16px;border:2px dashed #C9D9E8;
+  border-radius:12px;color:#5A6B7C;font-size:15px;font-weight:600;margin-bottom:15px;cursor:pointer}
+.field-photo-add:active{background:#EAF3FB;border-color:#2E9BD6}
+.field-photo-add input{display:none}
+.field-report-img{width:100%;border-radius:10px;margin-top:9px;display:block;
+  max-height:220px;object-fit:cover}
+.fp-load{background:#E7EEF5;border-radius:10px;min-height:120px;
+  animation:fvPulse 1.4s ease-in-out infinite}
+.lw-img{display:block;margin-top:8px;border-radius:8px;max-width:220px;max-height:150px;object-fit:cover}
+
 /* ===== WALKTHROUGH BAR (field) ===== */
 .fv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 16px 4px;
   padding:13px 15px;border-radius:13px;background:#fff;border:1px solid #DCE6F0}
@@ -4224,6 +4340,13 @@ main{max-width:1080px;margin:0 auto}
   font-size:14px;font-family:inherit;color:#16232F;background:#fff;width:100%;box-sizing:border-box}
 .docs-lf-row input:focus,.docs-lf-row select:focus{outline:none;border-color:#2E9BD6;box-shadow:0 0 0 3px rgba(46,155,214,.15)}
 .docs-lf-hint{font-size:12px;color:#7C8FA1;margin-top:9px}
+.docs-linkedit{background:#FFF9EC;border:1.5px solid #F2A900;border-radius:12px;padding:14px;margin-bottom:16px}
+.docs-linkedit-h{font-size:13.5px;color:#8A6414;margin-bottom:9px}
+.docs-linkedit-row{display:flex;gap:8px;align-items:center}
+.docs-linkedit-row input{flex:1;padding:9px 11px;border:1px solid #DCE6F0;border-radius:8px;
+  font-size:14px;font-family:inherit;color:#16232F;background:#fff}
+.docs-linkedit-row input:focus{outline:none;border-color:#2E9BD6;box-shadow:0 0 0 3px rgba(46,155,214,.15)}
+.docs-addlink{color:#8A6414!important;border-color:#F0D9A8!important}
 .docs-empty{padding:30px;text-align:center;color:#7C8FA1;font-size:14px}
 .docs-err{background:#FBE9E9;border:1px solid #F3C9C9;color:#C62828;border-radius:10px;padding:12px 14px;font-size:13.5px;margin-bottom:14px}
 .docs-group{margin-bottom:18px}
@@ -4543,7 +4666,8 @@ function ProjectPicker({
   refreshKey,
   bump,
   display,
-  setDisplay
+  setDisplay,
+  setFieldView
 }) {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -4675,6 +4799,9 @@ function ProjectPicker({
     className: "cloud-signout",
     onClick: () => setDisplay(true)
   }, "Display mode"), /*#__PURE__*/React.createElement("a", {
+    className: "cloud-signout",
+    onClick: () => setFieldView(true)
+  }, "Field view"), /*#__PURE__*/React.createElement("a", {
     className: "cloud-signout",
     onClick: onSignOut
   }, "Sign out")))), /*#__PURE__*/React.createElement("main", {
@@ -5580,6 +5707,7 @@ function Documents({
   const [docs, setDocs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [linkForm, setLinkForm] = useState(false);
+  const [linking, setLinking] = useState(null); // registered doc awaiting a link
   const [lf, setLf] = useState({
     label: "",
     url: "",
@@ -5646,17 +5774,52 @@ function Documents({
     }
   }
   async function download(d) {
+    // The tab MUST be opened synchronously, inside the click. Calling
+    // window.open() after an await is no longer treated as user-initiated, so
+    // browsers block it — silently. That is why clicking a file appeared to do
+    // nothing at all rather than showing an error.
+    const tab = window.open("", "_blank");
     try {
-      const {
-        data,
-        error
-      } = await sb.storage.from("project-docs").createSignedUrl(d.storage_path, 120); // 2-minute link
+      // Files uploaded before the path bug was fixed have a trailing newline
+      // baked into storage_path, which makes the signed URL fail. Trim it so
+      // those older uploads still open.
+      const path = String(d.storage_path || "").trim();
+      if (!path) throw new Error("No file path recorded for this document.");
+
+      const { data, error } = await sb.storage
+        .from("project-docs").createSignedUrl(path, 120); // 2-minute link
       if (error) throw error;
-      window.open(data.signedUrl, "_blank");
+      if (!data || !data.signedUrl) throw new Error("No link came back from storage.");
+
+      if (tab && !tab.closed) tab.location = data.signedUrl;
+      else window.location.assign(data.signedUrl); // popup blocked — same tab
     } catch (e) {
-      alert("Couldn't open file: " + (e.message || e));
+      if (tab && !tab.closed) tab.close();
+      const m = e.message || String(e);
+      alert(/not found|does not exist/i.test(m)
+        ? "That file isn't in storage. It may have been registered by name from " +
+          "a folder scan without the file itself being uploaded — use Upload files " +
+          "to add it, or Add link to point at where it actually lives."
+        : "Couldn't open file: " + m);
     }
   }
+  // Attach a URL to a document that was registered by name during a folder
+  // scan. These arrive with no link, which is what made clicking them reload
+  // the app before this existed.
+  async function saveLink() {
+    if (!/^https?:\/\//i.test(linking.url || "")) {
+      alert("Link must start with http:// or https://");
+      return;
+    }
+    setBusy(true);
+    const { error } = await sb.from("documents")
+      .update({ url: linking.url.trim() }).eq("id", linking.id);
+    setBusy(false);
+    if (error) { alert(error.message); return; }
+    setLinking(null);
+    load();
+  }
+
   async function addLink() {
     if (!lf.label.trim() || !lf.url.trim()) {
       alert("Name and URL are required.");
@@ -5819,7 +5982,34 @@ function Documents({
     disabled: busy
   }, "Add")), /*#__PURE__*/React.createElement("div", {
     className: "docs-lf-hint"
-  }, "Use this for files kept in SharePoint, a network drive, or anywhere with a web link.")), loadErr && /*#__PURE__*/React.createElement("div", {
+  }, "Use this for files kept in SharePoint, a network drive, or anywhere with a web link.")), linking && /*#__PURE__*/React.createElement("div", {
+    className: "docs-linkedit"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "docs-linkedit-h"
+  }, "Add a link for ", /*#__PURE__*/React.createElement("b", null, linking.label)), /*#__PURE__*/React.createElement("div", {
+    className: "docs-linkedit-row"
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    placeholder: "https://jmaa.sharepoint.com/...",
+    value: linking.url,
+    onChange: e => setLinking({
+      ...linking,
+      url: e.target.value
+    }),
+    onKeyDown: e => {
+      if (e.key === "Enter") saveLink();
+      if (e.key === "Escape") setLinking(null);
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary btn-sm",
+    onClick: saveLink,
+    disabled: busy
+  }, "Save"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost btn-sm",
+    onClick: () => setLinking(null)
+  }, "Cancel")), /*#__PURE__*/React.createElement("div", {
+    className: "docs-lf-hint"
+  }, "This document was registered by name from a folder scan. Paste where it actually lives.")), loadErr && /*#__PURE__*/React.createElement("div", {
     className: "docs-err"
   }, "Couldn't load documents: ", loadErr), docs === null && /*#__PURE__*/React.createElement("div", {
     className: "docs-empty"
@@ -5844,12 +6034,22 @@ function Documents({
   }, d.kind === "file" ? `File${d.size_bytes ? " · " + fmtSize(d.size_bytes) : ""}` : d.legacy ? "Link · from Grant & Compliance" : "Link")), d.kind === "file" ? /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-xs",
     onClick: () => download(d)
-  }, "Open") : /*#__PURE__*/React.createElement("a", {
+  }, "Open") : /^https?:\/\//i.test(d.url || "") ? /*#__PURE__*/React.createElement("a", {
     className: "btn btn-ghost btn-xs",
     href: d.url,
     target: "_blank",
     rel: "noopener noreferrer"
-  }, "Open"), isEditor && /*#__PURE__*/React.createElement("button", {
+  }, "Open") :
+  // A document registered from a folder scan has a name but no link yet. An
+  // anchor with an empty href navigates to the current page, which reloads the
+  // whole app and dumps you back at the start — so don't render one.
+  isEditor ? /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost btn-xs docs-addlink",
+    onClick: () => setLinking({ id: d.id, label: d.label, url: "" })
+  }, "Add link") : /*#__PURE__*/React.createElement("span", {
+    className: "btn btn-ghost btn-xs btn-dead",
+    title: "No link recorded for this document yet"
+  }, "No link"), isEditor && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-danger btn-xs",
     onClick: () => remove(d)
   }, "Remove")))))));
@@ -5861,6 +6061,33 @@ function Documents({
 //  answers grounded in live portfolio data. Available to any signed-in user.
 //  If the edge function isn't deployed yet, it says so instead of breaking.
 // ============================================================================
+// Field names the assistant uses -> what a project manager would call them.
+// The confirmation panel is the only thing standing between a model's guess
+// and a live figure, so it has to be readable at a glance.
+const FIELD_LABEL = {
+  title: "Project title", projectNo: "JMAA project no.", aipNo: "AIP project no.",
+  garverProjectNo: "Engineer project no.", projectManager: "Project manager",
+  owner: "Project owner", location: "Project location", scope: "Project scope",
+  primeContractor: "Prime contractor", engineerOfRecord: "Engineer of record",
+  subEngineer: "Sub-engineer", primeBudget: "Construction budget",
+  engineeringBudget: "Engineering budget",
+  budgetVarianceLimit: "Budget variance limit (charter hard stop)",
+  timeVarianceLimitPerWeek: "Schedule slippage limit (charter hard stop)",
+  startISO: "Start date", days: "Duration (days)", fyStartMonth: "Fiscal year start",
+  dbeGoal: "DBE goal", dbePaid: "DBE paid to date", safetyIncidents: "Safety incidents",
+  coCount: "Change order count", origCompletion: "Original completion",
+  revCompletion: "Revised completion", revReason: "Reason for revision"
+};
+
+function fmtChangeVal(field, value) {
+  if (field === "budgetVarianceLimit") return (Number(value) * 100).toFixed(2) + "%";
+  if (field === "dbeGoal") return Number(value).toFixed(2) + "%";
+  if (["primeBudget", "engineeringBudget", "dbePaid"].includes(field))
+    return "$" + Number(value).toLocaleString();
+  if (field === "timeVarianceLimitPerWeek") return value + " days/week";
+  return String(value);
+}
+
 function Assistant({
   isEditor
 }) {
@@ -5903,6 +6130,24 @@ function Assistant({
   async function ask(question) {
     const text = (question || q).trim();
     if (!text || busy) return;
+    // A typed confirmation is equivalent to clicking Apply change, but only
+    // when a concrete proposal is already visible.
+    if (pending && /^(yes|yes please|confirm|confirmed|apply|apply it|do it|go ahead)$/i.test(text)) {
+      const done = window.JMAA_APPLY ? window.JMAA_APPLY.apply(pending.changes) : [];
+      setQ("");
+      setMsgs(m => [...m, {
+        role: "ai",
+        text: done.length ? "Applied:\n• " + done.join("\n• ") : "Nothing was applied."
+      }]);
+      setPending(null);
+      return;
+    }
+    // Editors should not have to remember to switch modes before giving a
+    // clear editing command. Route action-language through the same preview +
+    // confirmation workflow as Update data. Questions remain read-only.
+    const looksLikeEdit = /^\s*(please\s+)?(change|update|set|add|correct|replace|rename|mark|record|enter)\b/i.test(text);
+    const requestMode = mode === "ask" && isEditor && looksLikeEdit ? "update" : mode;
+    const activeProject = window.JMAA_APPLY;
     setQ("");
     setMsgs(m => [...m, {
       role: "user",
@@ -5916,7 +6161,11 @@ function Assistant({
       } = await sb.functions.invoke("assistant", {
         body: {
           question: text,
-          mode,
+          mode: requestMode,
+          targetProject: activeProject ? {
+            id: activeProject.projectId,
+            title: activeProject.projectTitle
+          } : undefined,
           document: attached || undefined
         }
       });
@@ -5927,9 +6176,9 @@ function Assistant({
           role: "err",
           text: data.error
         }]);
-      } else if (data && data.answer && mode === "update") {
+      } else if (data && data.answer && requestMode === "update") {
         setBusy(false);
-        const bridge = window.JMAA_APPLY;
+        const bridge = activeProject;
         if (!bridge) {
           setMsgs(m => [...m, {
             role: "err",
@@ -6074,9 +6323,15 @@ function Assistant({
     ref: scroller
   }, msgs.length === 0 && mode === "update" && /*#__PURE__*/React.createElement("div", {
     className: "ai-intro"
-  }, /*#__PURE__*/React.createElement("p", null, "Tell me what to change in plain language — for example “week 5 spend was 128,000 with one day lost to rain” or “mark Grant Executed complete”."), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("p", null, "Tell me what to change in plain language. Weekly figures, pay applications, grant milestones, contractor and engineer names, budgets, dates, DBE goals, funding shares and change orders can all be updated."), /*#__PURE__*/React.createElement("div", {
+    className: "ai-suggest"
+  }, ["week 5 spend was 128,000 with one day lost to rain", "mark Grant Executed complete", "the prime contractor is McInnis Systems", "set the DBE goal to 7.51%", "change order 1, added conduit, $12,400 and 5 days"].map((x, i) => /*#__PURE__*/React.createElement("button", {
+    key: i,
+    className: "ai-chip",
+    onClick: () => ask(x)
+  }, x))), /*#__PURE__*/React.createElement("p", {
     className: "ai-note"
-  }, "Nothing is saved until you review the change and click Apply.")), msgs.length === 0 && mode !== "grade" && mode !== "update" && /*#__PURE__*/React.createElement("div", {
+  }, "Nothing is saved until you review the change and click Apply. A status like “on track” can't be set directly — it's calculated from the figures.")), msgs.length === 0 && mode !== "grade" && mode !== "update" && /*#__PURE__*/React.createElement("div", {
     className: "ai-intro"
   }, /*#__PURE__*/React.createElement("p", null, mode === "risk" ? "Review project risk across the portfolio, using live tracker data." : mode === "memo" ? "Draft updates and talking points from the current project numbers." : "Ask about your projects — answers come from the live tracker data."), /*#__PURE__*/React.createElement("div", {
     className: "ai-suggest"
@@ -6109,7 +6364,7 @@ function Assistant({
     className: "ai-propose-list"
   }, pending.changes.map((c, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, c.type === "week" && /*#__PURE__*/React.createElement(React.Fragment, null, "Week ", c.week, c.spend != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · spend ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.spend).toLocaleString())), c.daysLost != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · days lost ", /*#__PURE__*/React.createElement("b", null, c.daysLost)), c.note && /*#__PURE__*/React.createElement(React.Fragment, null, " · “", c.note, "”")), c.type === "payapp" && /*#__PURE__*/React.createElement(React.Fragment, null, "Pay application ", c.number, c.workCompleted != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · work ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.workCompleted).toLocaleString())), c.paid && /*#__PURE__*/React.createElement(React.Fragment, null, " · paid ", /*#__PURE__*/React.createElement("b", null, c.paid)), c.reimbReceived && /*#__PURE__*/React.createElement(React.Fragment, null, " · reimbursed ", /*#__PURE__*/React.createElement("b", null, c.reimbReceived))), c.type === "milestone" && /*#__PURE__*/React.createElement(React.Fragment, null, "Milestone “", c.name, "” → ", /*#__PURE__*/React.createElement("b", null, c.done ? "complete" : "not complete"))))), pending.warnings && pending.warnings.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, c.type === "week" && /*#__PURE__*/React.createElement(React.Fragment, null, "Week ", c.week, c.spend != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · spend ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.spend).toLocaleString())), c.daysLost != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · days lost ", /*#__PURE__*/React.createElement("b", null, c.daysLost)), c.note && /*#__PURE__*/React.createElement(React.Fragment, null, " · “", c.note, "”")), c.type === "payapp" && /*#__PURE__*/React.createElement(React.Fragment, null, "Pay application ", c.number, c.workCompleted != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · work ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.workCompleted).toLocaleString())), c.paid && /*#__PURE__*/React.createElement(React.Fragment, null, " · paid ", /*#__PURE__*/React.createElement("b", null, c.paid)), c.reimbReceived && /*#__PURE__*/React.createElement(React.Fragment, null, " · reimbursed ", /*#__PURE__*/React.createElement("b", null, c.reimbReceived))), c.type === "milestone" && /*#__PURE__*/React.createElement(React.Fragment, null, "Milestone “", c.name, "” → ", /*#__PURE__*/React.createElement("b", null, c.done ? "complete" : "not complete")), c.type === "meta" && /*#__PURE__*/React.createElement(React.Fragment, null, FIELD_LABEL[c.field] || c.field, " → ", /*#__PURE__*/React.createElement("b", null, fmtChangeVal(c.field, c.value))), c.type === "sched" && /*#__PURE__*/React.createElement(React.Fragment, null, "Schedule · ", FIELD_LABEL[c.field] || c.field, " → ", /*#__PURE__*/React.createElement("b", null, String(c.value))), c.type === "grant" && /*#__PURE__*/React.createElement(React.Fragment, null, "Grant · ", FIELD_LABEL[c.field] || c.field, " → ", /*#__PURE__*/React.createElement("b", null, fmtChangeVal(c.field, c.value))), c.type === "funding" && /*#__PURE__*/React.createElement(React.Fragment, null, c.source, " funding → ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.amount).toLocaleString())), c.type === "changeorder" && /*#__PURE__*/React.createElement(React.Fragment, null, "Change order ", c.number, c.desc && /*#__PURE__*/React.createElement(React.Fragment, null, " · “", c.desc, "”"), c.cost != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · ", /*#__PURE__*/React.createElement("b", null, "$", Number(c.cost).toLocaleString())), c.days != null && /*#__PURE__*/React.createElement(React.Fragment, null, " · +", c.days, " days"))))), pending.warnings && pending.warnings.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "ai-propose-warn"
   }, pending.warnings.join(" ")), /*#__PURE__*/React.createElement("div", {
     className: "ai-propose-actions"
@@ -6335,7 +6590,8 @@ function FieldSetup({
 // ============================================================================
 function FieldHome({
   profile,
-  onSignOut
+  onSignOut,
+  onExit
 }) {
   const [projects, setProjects] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -6361,8 +6617,8 @@ function FieldHome({
     className: "field-hdr-name"
   }, profile.full_name)), /*#__PURE__*/React.createElement("a", {
     className: "field-signout",
-    onClick: onSignOut
-  }, "Sign out")), !openId && /*#__PURE__*/React.createElement("main", {
+    onClick: onExit || onSignOut
+  }, onExit ? "Exit" : "Sign out")), !openId && /*#__PURE__*/React.createElement("main", {
     className: "field-main"
   }, /*#__PURE__*/React.createElement("h1", {
     className: "field-h1"
@@ -6551,7 +6807,7 @@ function FieldProject({
     className: "field-empty"
   }, "No reports yet."), (reports || []).map(r => /*#__PURE__*/React.createElement("div", {
     key: r.id,
-    className: "field-report"
+    className: "field-report fr-" + (r.category || "Other")
   }, /*#__PURE__*/React.createElement("div", {
     className: "field-report-top"
   }, /*#__PURE__*/React.createElement("span", {
@@ -6563,7 +6819,10 @@ function FieldProject({
     day: "numeric"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "field-report-note"
-  }, r.note)))), composing && /*#__PURE__*/React.createElement(ReportComposer, {
+  }, r.note), r.photo_path && /*#__PURE__*/React.createElement(FieldPhoto, {
+    path: r.photo_path,
+    className: "field-report-img"
+  })))), composing && /*#__PURE__*/React.createElement(ReportComposer, {
     projectId: projectId,
     visitId: visit ? visit.id : null,
     onClose: () => setComposing(false),
@@ -6573,6 +6832,28 @@ function FieldProject({
     }
   }));
 }
+// A photo in the private project-docs bucket needs a signed URL to display.
+// Fetched per thumbnail; the link expires, which is the point of a private
+// bucket — nothing here is guessable from a URL alone.
+function FieldPhoto({ path, className }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let live = true;
+    if (!path) return;
+    (async () => {
+      try {
+        const { data } = await sb.storage.from("project-docs").createSignedUrl(path, 3600);
+        if (live && data) setUrl(data.signedUrl);
+      } catch (e) {}
+    })();
+    return () => { live = false; };
+  }, [path]);
+  if (!path) return null;
+  if (!url) return React.createElement("div", { className: (className || "") + " fp-load" });
+  return React.createElement("a", { href: url, target: "_blank", rel: "noreferrer" },
+    React.createElement("img", { src: url, className: className, alt: "field photo" }));
+}
+
 function ReportComposer({
   projectId,
   visitId,
@@ -6582,25 +6863,57 @@ function ReportComposer({
   const [category, setCategory] = useState("Progress");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photo, setPhoto] = useState(null);     // { file, preview }
+  const [stage, setStage] = useState("");
   const CATS = ["Progress", "Maintenance", "Safety", "Other"];
+
+  function pickPhoto(file) {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert("That photo is too large. Try again — most phone cameras are fine.");
+      return;
+    }
+    setPhoto({ file, preview: URL.createObjectURL(file) });
+  }
+
   async function save() {
-    if (!note.trim()) return;
+    if (!note.trim() && !photo) return;
     setBusy(true);
-    const {
-      data: sess
-    } = await sb.auth.getSession();
+    const { data: sess } = await sb.auth.getSession();
     const uid = sess && sess.session && sess.session.user.id;
-    const {
-      error
-    } = await sb.from("field_reports").insert({
+
+    // Upload first. A note that claims a photo but has none is worse than a
+    // note with no photo, so if the upload fails the record isn't written.
+    let photoPath = null;
+    if (photo) {
+      setStage("Uploading photo…");
+      const safe = photo.file.name.replace(/[^\w.\-]+/g, "_") || "photo.jpg";
+      const path = `field/${projectId}/${Date.now()}_${safe}`;
+      const { error: upErr } = await sb.storage.from("project-docs")
+        .upload(path, photo.file, { contentType: photo.file.type || "image/jpeg" });
+      if (upErr) {
+        setBusy(false);
+        setStage("");
+        alert("Photo didn't upload: " + (upErr.message || upErr) +
+              "\n\nThe note wasn't saved. Try again when you have a better signal.");
+        return;
+      }
+      photoPath = path;
+    }
+
+    setStage("Saving…");
+    const { error } = await sb.from("field_reports").insert({
       project_id: projectId,
       category,
       note: note.trim(),
       reported_by: uid,
-      visit_id: visitId || null
+      visit_id: visitId || null,
+      photo_path: photoPath
     });
     setBusy(false);
+    setStage("");
     if (!error) onSaved();
+    else alert("Couldn't save: " + error.message);
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "field-sheet-bg",
@@ -6623,16 +6936,34 @@ function ReportComposer({
     autoFocus: true,
     placeholder: "What did you see?",
     onChange: e => setNote(e.target.value)
-  }), /*#__PURE__*/React.createElement("div", {
+  }), photo ? /*#__PURE__*/React.createElement("div", {
+    className: "field-photo"
+  }, /*#__PURE__*/React.createElement("img", {
+    src: photo.preview,
+    alt: "attached"
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "field-photo-x",
+    onClick: () => setPhoto(null)
+  }, "Remove photo")) : /*#__PURE__*/React.createElement("label", {
+    className: "field-photo-add"
+  }, "📷  Add a photo", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "image/*",
+    capture: "environment",
+    onChange: e => {
+      pickPhoto(e.target.files[0]);
+      e.target.value = "";
+    }
+  })), /*#__PURE__*/React.createElement("div", {
     className: "field-sheet-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-btn-ghost",
     onClick: onClose
   }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     className: "field-btn-primary",
-    disabled: busy || !note.trim(),
+    disabled: busy || !note.trim() && !photo,
     onClick: save
-  }, busy ? "Saving…" : "Save report"))));
+  }, busy ? stage || "Saving…" : "Save report"))));
 }
 function CloudApp() {
   const [session, setSession] = useState(null);
@@ -6642,6 +6973,11 @@ function CloudApp() {
   const [booting, setBooting] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [display, setDisplay] = useState(false); // big-screen wall board
+  // Field view as a MODE rather than a second role. Staff whose role is
+  // "field" only ever see it; everyone else can switch in to preview exactly
+  // what those staff see — which is what makes it demonstrable to leadership
+  // without handing out a second login.
+  const [fieldView, setFieldView] = useState(false);
   const bump = () => setRefreshKey(k => k + 1);
 
   // Display mode auto-refreshes so a wall screen stays current without anyone
@@ -6705,9 +7041,12 @@ function CloudApp() {
 
   // Field staff (walkthroughs, maintenance) get a separate, phone-first view —
   // a checklist and a report log, none of the budget or grant complexity.
-  if (profile.role === "field") {
+  if (profile.role === "field" || fieldView) {
     return /*#__PURE__*/React.createElement(FieldHome, {
       profile: profile,
+      // Only a previewing user gets a way back out; genuine field staff have
+      // nowhere else to go, so an exit would just confuse them.
+      onExit: profile.role === "field" ? null : () => setFieldView(false),
       onSignOut: () => sb.auth.signOut()
     });
   }
@@ -6730,6 +7069,7 @@ function CloudApp() {
     bump: bump,
     display: display,
     setDisplay: setDisplay,
+    setFieldView: setFieldView,
     onSignOut: () => sb.auth.signOut()
   }), !display && /*#__PURE__*/React.createElement(Assistant, {
     isEditor: profile.role === "editor"
