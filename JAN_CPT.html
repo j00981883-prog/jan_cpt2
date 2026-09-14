@@ -1381,7 +1381,20 @@ function Tracker({
     const msDone = secs.reduce((s, x) => s + expandItems(x.items).filter(m => x.done?.[m]).length, 0);
     const budget = current.budgetBreach ? ["red", "Over budget " + fmtPct(current.cumVariance)] : current.cumVariance > meta.budgetVarianceLimit * 0.6 ? ["amber", "Trending " + fmtPct(current.cumVariance)] : ["green", "On budget"];
     const schedule = current.scheduleBreach ? ["red", current.daysPerWeek.toFixed(1) + " days/wk slippage"] : current.cumDaysLost > 0 ? ["amber", current.cumDaysLost + " days lost"] : ["green", "On schedule"];
-    const compliance = grant.milestones?.["Grant Executed"] ? ["green", msDone + " of " + msTotal + " milestones complete"] : grant.milestones?.["Grant Awarded"] ? ["amber", "Grant awarded, not yet executed"] : ["red", "Grant not executed"];
+    // Compliance must read the per-grant section checklists shown in the UI.
+    // Older code looked only at grant.milestones, so checking the newer list
+    // changed the progress count but left this light permanently red.
+    const sectionIsExecuted = sec => {
+      const items = expandItems(sec.items);
+      const executedItem = items.find(m => /^grant executed$/i.test(m));
+      return executedItem ? !!sec.done?.[executedItem] : items.length > 0 && items.every(m => sec.done?.[m]);
+    };
+    const grantsExecuted = secs.filter(sectionIsExecuted).length;
+    const compliance = grantsExecuted === secs.length && secs.length > 0
+      ? ["green", msDone + " of " + msTotal + " milestones complete"]
+      : msDone > 0
+        ? ["amber", msDone + " of " + msTotal + " complete · grant in progress"]
+        : ["red", "No grant milestones complete"];
     const inv = pay.receivedCount,
       invT = pay.submittedCount;
     const reimb = invT === 0 ? ["amber", "No reimbursements requested"] : inv >= invT ? ["green", inv + " of " + invT + " invoices processed"] : ["amber", inv + " of " + invT + " processed · " + fmtMoney(pay.pendingAmount) + " outstanding"];
