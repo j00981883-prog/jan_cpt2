@@ -5040,7 +5040,7 @@ function ProjectPicker({
   })), /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-gold",
     onClick: () => setCreating(true)
-  }, "+ New project"))), !display && projects && projects.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, projectTab === "internal" ? "+ New internal project" : "+ New project"))), !display && projects && projects.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "cloud-project-tabs",
     role: "tablist",
     "aria-label": "Project type"
@@ -5118,9 +5118,11 @@ function ProjectPicker({
       className: elapsed > 0 && daysLost > tlim * elapsed ? "cloud-bad" : ""
     }, daysLost))));
   }))), creating && /*#__PURE__*/React.createElement(NewProjectModal, {
+    initialCategory: projectTab === "internal" ? "internal" : "capital",
     onClose: () => setCreating(false),
-    onDone: () => {
+    onDone: category => {
       setCreating(false);
+      setProjectTab(category || "all");
       bump();
     }
   }));
@@ -5284,12 +5286,13 @@ const FORM_MAP = {
 
 
 function NewProjectModal({
+  initialCategory = "capital",
   onClose,
   onDone
 }) {
   const [f, setF] = useState({
     title: "",
-    projectCategory: "capital",
+    projectCategory: initialCategory,
     location: "",
     primeContractor: "",
     engineerOfRecord: "",
@@ -5749,7 +5752,7 @@ function NewProjectModal({
       }
     }
     setBusy(false);
-    onDone();
+    onDone(f.projectCategory);
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-bg",
