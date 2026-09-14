@@ -4015,7 +4015,23 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .internal-add{border:1px dashed #9FC0DC;border-radius:9px;padding:8px 11px;background:#F4F9FD;color:#1B6F9E;font:700 12px/1 inherit;cursor:pointer}
 .internal-msg{margin-top:14px;color:#2E7D52;font-size:13px;font-weight:700}
 .internal-docs .pad{padding:0}.internal-docs .panel{margin:0}
+.internal-hero{margin-bottom:18px;padding:24px;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:linear-gradient(135deg,rgba(46,155,214,.23),rgba(7,26,51,.35));box-shadow:0 18px 45px rgba(0,0,0,.18)}
+.internal-kicker{margin-bottom:8px;color:#8ED3F4;font-size:10.5px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+.internal-hero h1{margin:0;color:#fff;font:700 30px/1.08 var(--disp)}
+.internal-location{margin-top:9px;color:#C6E2F2;font-size:14px}
+.internal-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.internal-stat{min-height:92px;padding:17px 18px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.09)}
+.internal-stat span{display:block;margin-bottom:9px;color:#A9CCE2;font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+.internal-stat strong{color:#fff;font:700 20px/1.15 var(--disp)}
+.internal-overview{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+.internal-panel{padding:20px;border-radius:15px;background:#fff;box-shadow:0 14px 35px rgba(0,0,0,.16)}
+.internal-panel h2{margin:0 0 14px;color:#0B3D6E;font-size:17px}
+.internal-info-row{display:flex;justify-content:space-between;gap:18px;padding:11px 0;border-bottom:1px solid #E8EFF4}
+.internal-info-row:last-child{border-bottom:0}.internal-info-row span{color:#72869A;font-size:12px}.internal-info-row b{color:#18334C;font-size:13px;text-align:right}
+.internal-note-copy{margin:0;color:#40576B;font-size:14px;line-height:1.65;white-space:pre-wrap}.internal-empty{color:#8798A6;font-style:italic}
+.internal-edit-btn{border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:10px 17px;background:rgba(255,255,255,.1);color:#fff;font:800 13px/1 inherit;cursor:pointer}
 @media(max-width:640px){.internal-head{padding:15px}.internal-wrap{padding:18px 12px}.internal-card{padding:18px}.internal-grid{grid-template-columns:1fr}.internal-field.wide{grid-column:auto}.internal-head-title{font-size:15px}}
+@media(max-width:640px){.internal-stats{grid-template-columns:1fr}.internal-overview{grid-template-columns:1fr}.internal-hero h1{font-size:24px}}
 
 /* ===== AI ASSISTANT (Beta 3) ===== */
 @keyframes aiFabIn{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
@@ -7421,7 +7437,8 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   const [meta, setMeta] = useState({ ...(initial.meta || {}) });
   const [sched, setSched] = useState({ ...(initial.sched || {}) });
   const [grant, setGrant] = useState(initial.grant || { docs: {} });
-  const [tab, setTab] = useState("details");
+  const [tab, setTab] = useState("overview");
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [showProjectNo, setShowProjectNo] = useState(!!meta.projectNo);
@@ -7438,6 +7455,8 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
       location: String(meta.location || "").trim(),
       projectNo: showProjectNo ? String(meta.projectNo || "").trim() : "",
       engineerOfRecord: showEngineer ? String(meta.engineerOfRecord || "").trim() : "",
+      targetISO: meta.targetISO || meta.internalCompletion || "",
+      notes: String(meta.notes || meta.internalNotes || "").trim(),
       primeBudget: Number(meta.primeBudget) || 0,
       totalBudget: Number(meta.primeBudget) || 0,
       projectCategory: "internal"
@@ -7446,6 +7465,7 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
     setBusy(false);
     if (error) { setMsg(error.message); return; }
     setMeta(nextMeta);
+    setEditing(false);
     setMsg("Saved");
     setTimeout(() => setMsg(""), 2500);
   }
@@ -7454,21 +7474,31 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
     if (key === "projectNo") setShowProjectNo(false);
     if (key === "engineerOfRecord") setShowEngineer(false);
   }
+  const target = meta.targetISO || meta.internalCompletion || "";
+  const notes = meta.notes || meta.internalNotes || "";
+  const dateLabel = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not set";
   return /*#__PURE__*/React.createElement("div", { className: "internal-app" }, /*#__PURE__*/React.createElement("header", {
     className: "internal-head"
   }, /*#__PURE__*/React.createElement("button", { className: "internal-back", onClick: onBack }, "← All projects"), /*#__PURE__*/React.createElement("div", {
     className: "internal-head-title"
-  }, meta.title || "Internal project"), isEditor && /*#__PURE__*/React.createElement("button", {
-    className: "internal-save", onClick: save, disabled: busy
-  }, busy ? "Saving…" : "Save changes")), /*#__PURE__*/React.createElement("main", { className: "internal-wrap" }, /*#__PURE__*/React.createElement("div", {
+  }, "Internal / Maintenance"), isEditor && /*#__PURE__*/React.createElement("button", {
+    className: editing ? "internal-save" : "internal-edit-btn",
+    onClick: editing ? save : () => { setTab("overview"); setEditing(true); }, disabled: busy
+  }, busy ? "Saving…" : editing ? "Save changes" : "Edit project")), /*#__PURE__*/React.createElement("main", { className: "internal-wrap" }, /*#__PURE__*/React.createElement("section", {
+    className: "internal-hero"
+  }, /*#__PURE__*/React.createElement("div", { className: "internal-kicker" }, "Internal / Maintenance Project"), /*#__PURE__*/React.createElement("h1", null, meta.title || "Untitled project"), /*#__PURE__*/React.createElement("div", {
+    className: "internal-location"
+  }, meta.location ? "⌖  " + meta.location : "Location not set")), /*#__PURE__*/React.createElement("div", {
     className: "internal-tabs"
   }, /*#__PURE__*/React.createElement("button", {
-    className: "internal-tab" + (tab === "details" ? " on" : ""), onClick: () => setTab("details")
-  }, "Project details"), /*#__PURE__*/React.createElement("button", {
+    className: "internal-tab" + (tab === "overview" ? " on" : ""), onClick: () => setTab("overview")
+  }, "Overview"), /*#__PURE__*/React.createElement("button", {
+    className: "internal-tab" + (tab === "walkthroughs" ? " on" : ""), onClick: () => setTab("walkthroughs")
+  }, "Walkthroughs"), /*#__PURE__*/React.createElement("button", {
     className: "internal-tab" + (tab === "documents" ? " on" : ""), onClick: () => setTab("documents")
-  }, "Documents")), tab === "details" ? /*#__PURE__*/React.createElement("section", { className: "internal-card" }, /*#__PURE__*/React.createElement("h2", null, "Internal / Maintenance"), /*#__PURE__*/React.createElement("p", {
+  }, "Documents")), tab === "overview" ? editing ? /*#__PURE__*/React.createElement("section", { className: "internal-card" }, /*#__PURE__*/React.createElement("h2", null, "Edit project"), /*#__PURE__*/React.createElement("p", {
     className: "internal-help"
-  }, "Only keep the information this project needs."), /*#__PURE__*/React.createElement("div", { className: "internal-grid" }, /*#__PURE__*/React.createElement("label", {
+  }, "Keep it simple—only add what this project needs."), /*#__PURE__*/React.createElement("div", { className: "internal-grid" }, /*#__PURE__*/React.createElement("label", {
     className: "internal-field wide"
   }, /*#__PURE__*/React.createElement("span", null, "Project name"), /*#__PURE__*/React.createElement("input", {
     value: meta.title || "", onChange: setM("title"), disabled: !isEditor
@@ -7491,14 +7521,18 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   })), /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("span", null, "Start date"), /*#__PURE__*/React.createElement("input", {
     type: "date", value: sched.startISO || "", onChange: setS("startISO"), disabled: !isEditor
   })), /*#__PURE__*/React.createElement("label", { className: "internal-field" }, /*#__PURE__*/React.createElement("span", null, "Target completion"), /*#__PURE__*/React.createElement("input", {
-    type: "date", value: meta.internalCompletion || "", onChange: setM("internalCompletion"), disabled: !isEditor
+    type: "date", value: target, onChange: setM("targetISO"), disabled: !isEditor
   })), /*#__PURE__*/React.createElement("label", { className: "internal-field wide" }, /*#__PURE__*/React.createElement("span", null, "Notes"), /*#__PURE__*/React.createElement("textarea", {
-    value: meta.internalNotes || "", onChange: setM("internalNotes"), disabled: !isEditor, placeholder: "Scope, work requested, contacts, or next steps"
+    value: notes, onChange: setM("notes"), disabled: !isEditor, placeholder: "Scope, work requested, contacts, or next steps"
   }))), isEditor && /*#__PURE__*/React.createElement("div", { className: "internal-adds" }, !showProjectNo && /*#__PURE__*/React.createElement("button", {
     className: "internal-add", onClick: () => setShowProjectNo(true)
   }, "+ Project number"), !showEngineer && /*#__PURE__*/React.createElement("button", {
     className: "internal-add", onClick: () => setShowEngineer(true)
-  }, "+ Engineer")), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : /*#__PURE__*/React.createElement("div", {
+  }, "+ Engineer")), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "internal-stats"
+  }, /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Budget"), /*#__PURE__*/React.createElement("strong", null, fmtMoney(meta.primeBudget || 0))), /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Start date"), /*#__PURE__*/React.createElement("strong", null, dateLabel(sched.startISO))), /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Target completion"), /*#__PURE__*/React.createElement("strong", null, dateLabel(target)))), /*#__PURE__*/React.createElement("div", {
+    className: "internal-overview"
+  }, /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Project details"), /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("b", null, meta.location || "Not set")), showProjectNo && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Project number"), /*#__PURE__*/React.createElement("b", null, meta.projectNo || "Not set")), showEngineer && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Engineer"), /*#__PURE__*/React.createElement("b", null, meta.engineerOfRecord || "Not set"))), /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Notes"), notes ? /*#__PURE__*/React.createElement("p", { className: "internal-note-copy" }, notes) : /*#__PURE__*/React.createElement("p", { className: "internal-note-copy internal-empty" }, "No notes added yet."))), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : tab === "walkthroughs" ? /*#__PURE__*/React.createElement("div", { className: "internal-docs" }, /*#__PURE__*/React.createElement(LastWalkthrough, { projectId }), /*#__PURE__*/React.createElement(FieldSetup, { projectId, isEditor })) : /*#__PURE__*/React.createElement("div", {
     className: "internal-docs"
   }, /*#__PURE__*/React.createElement(Documents, { projectId, isEditor, grant, setGrant, say: setMsg }))));
 }
