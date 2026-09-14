@@ -4376,9 +4376,12 @@ main{max-width:1080px;margin:0 auto}
 /* ===== DOCUMENTS TAB ===== */
 .docs-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:4px}
 .docs-head h2{margin:0}
-.docs-actions{display:flex;gap:9px;align-items:center}
+.docs-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .docs-upload{position:relative;overflow:hidden;display:inline-block;cursor:pointer}
 .docs-upload input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.docs-folder{border-color:#9BCBE7!important;color:#0B5C88!important;background:#EEF8FD!important}
+.docs-upload-status{margin:10px 0 2px;padding:10px 13px;border-radius:9px;background:#EEF8F1;
+  border:1px solid #B9E3C6;color:#2E6A49;font-size:13px;font-weight:700}
 .docs-drop{border:2px dashed #C9D9E8;border-radius:12px;padding:20px;text-align:center;
   color:#5A6B7C;font-size:14px;margin:14px 0 18px;transition:background .15s,border-color .15s}
 .docs-drop.drag{background:#EAF3FB;border-color:#2E9BD6;color:#0B3D6E}
@@ -5772,6 +5775,7 @@ function Documents({
 }) {
   const [docs, setDocs] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [linkForm, setLinkForm] = useState(false);
   const [linking, setLinking] = useState(null); // registered doc awaiting a link
   const [lf, setLf] = useState({
@@ -5807,36 +5811,57 @@ function Documents({
   useEffect(() => {
     load();
   }, [projectId]);
-  async function onUpload(files) {
+  async function onUpload(files, sourceLabel = "files") {
     if (!files || !files.length) return;
+    const selected = Array.from(files).filter(file => !/(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i.test(file.webkitRelativePath || file.name));
+    if (!selected.length) return;
     setBusy(true);
+    setUploadStatus(`Scanning ${selected.length} ${sourceLabel}…`);
+    const existing = new Set((docs || []).map(d => String(d.label || d.file_name || "").toLowerCase()));
+    let added = 0;
+    let skipped = 0;
+    const failed = [];
     try {
-      for (const file of files) {
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i];
+        const label = file.webkitRelativePath || file.name;
+        setUploadStatus(`Adding ${i + 1} of ${selected.length}…`);
+        if (existing.has(label.toLowerCase())) {
+          skipped++;
+          continue;
+        }
         const safe = file.name.replace(/[^\w.\-]+/g, "_");
-        const path = `${projectId}/${Date.now()}_${safe}`;
-        const {
-          error: upErr
-        } = await sb.storage.from("project-docs").upload(path, file);
-        if (upErr) throw upErr;
-        const {
-          error: rowErr
-        } = await sb.from("documents").insert({
-          project_id: projectId,
-          kind: "file",
-          label: file.name,
-          file_name: file.name,
-          storage_path: path,
-          size_bytes: file.size,
-          category: guessCategory(file.name)
-        });
-        if (rowErr) throw rowErr;
+        const path = `${projectId}/${Date.now()}_${i}_${safe}`;
+        try {
+          const { error: upErr } = await sb.storage.from("project-docs").upload(path, file);
+          if (upErr) throw upErr;
+          const { error: rowErr } = await sb.from("documents").insert({
+            project_id: projectId,
+            kind: "file",
+            label,
+            file_name: file.name,
+            storage_path: path,
+            size_bytes: file.size,
+            category: guessCategory(label)
+          });
+          if (rowErr) {
+            await sb.storage.from("project-docs").remove([path]);
+            throw rowErr;
+          }
+          existing.add(label.toLowerCase());
+          added++;
+        } catch (e) {
+          failed.push(`${label}: ${e.message || e}`);
+        }
       }
-      say && say("Uploaded");
       await load();
-    } catch (e) {
-      alert("Upload failed: " + (e.message || e));
+      const result = `${added} file${added === 1 ? "" : "s"} added` + (skipped ? ` · ${skipped} already listed` : "");
+      setUploadStatus(result);
+      say && say(result);
+      if (failed.length) alert(`${failed.length} file${failed.length === 1 ? "" : "s"} could not be added:\n\n` + failed.slice(0, 8).join("\n"));
     } finally {
       setBusy(false);
+      setTimeout(() => setUploadStatus(""), 5000);
     }
   }
   async function download(d) {
@@ -6064,6 +6089,19 @@ function Documents({
       e.target.value = "";
     }
   })), /*#__PURE__*/React.createElement("label", {
+    className: "btn btn-ghost btn-sm docs-upload docs-folder",
+    title: "Choose a folder and automatically add every file inside it"
+  }, busy ? "Scanning…" : "Add folder", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    multiple: true,
+    webkitdirectory: "",
+    directory: "",
+    disabled: busy,
+    onChange: e => {
+      onUpload([...e.target.files], "folder files");
+      e.target.value = "";
+    }
+  })), /*#__PURE__*/React.createElement("label", {
     className: "btn btn-ghost btn-sm docs-upload",
     title: "Match selected files to filenames already listed"
   }, busy ? "Working…" : "Connect listed files", /*#__PURE__*/React.createElement("input", {
@@ -6077,7 +6115,9 @@ function Documents({
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => setLinkForm(!linkForm)
-  }, "Add link"))), isEditor && /*#__PURE__*/React.createElement("div", {
+  }, "Add link"))), uploadStatus && /*#__PURE__*/React.createElement("div", {
+    className: "docs-upload-status"
+  }, uploadStatus), isEditor && /*#__PURE__*/React.createElement("div", {
     className: "docs-drop",
     onDragOver: e => {
       e.preventDefault();
@@ -6089,7 +6129,7 @@ function Documents({
       e.currentTarget.classList.remove("drag");
       onUpload([...e.dataTransfer.files]);
     }
-  }, "Drag files here to upload, or use the button above."), isEditor && linkForm && /*#__PURE__*/React.createElement("div", {
+  }, "Drag files here to upload, or use Upload files / Add folder above."), isEditor && linkForm && /*#__PURE__*/React.createElement("div", {
     className: "docs-linkform"
   }, /*#__PURE__*/React.createElement("div", {
     className: "docs-lf-row"
