@@ -5390,7 +5390,9 @@ function NewProjectModal({
 
     setExtract({ confidence: conf, notes, merged, conflicts, sources: results.map(r => r.file) });
     setScan({
-      files: usable.filter(f => !targets.some(t => t.file === f)),
+      // Keep every selected file, including the documents used for extraction,
+      // so the Documents tab represents the complete source folder.
+      files: usable,
       charter: `${results.length} document${results.length === 1 ? "" : "s"}`,
       note: conflicts.length ? `${conflicts.length} field${conflicts.length === 1 ? "" : "s"} disagree between documents — check the marked fields before creating the project.` : ""
     });
@@ -5471,23 +5473,39 @@ function NewProjectModal({
       return;
     }
 
-    // If a folder was scanned, record the files it found as document entries so
-    // the register matches the folder. Links or uploads are added later.
+    // If a folder was scanned, upload the actual files now. Registering names
+    // alone produced rows that looked clickable but had nothing behind them.
     if (created && scan && registerDocs && scan.files.length) {
-      const rows = scan.files.map(file => ({
-        project_id: created.id,
-        kind: "link",
-        label: file.name,
-        url: "",
-        category: docCategory(file.name, file.webkitRelativePath || file.__path)
-      }));
-      const {
-        error: docErr
-      } = await sb.from("documents").insert(rows);
-      if (docErr) {
-        setBusy(false);
-        setErr("Project created, but the documents couldn't be registered: " + docErr.message);
-        return;
+      const failedUploads = [];
+      for (let i = 0; i < scan.files.length; i++) {
+        const file = scan.files[i];
+        try {
+          const safe = file.name.replace(/[^\w.\-]+/g, "_");
+          const path = `${created.id}/${Date.now()}_${i}_${safe}`;
+          const { error: upErr } = await sb.storage.from("project-docs").upload(path, file);
+          if (upErr) throw upErr;
+          const { error: docErr } = await sb.from("documents").insert({
+            project_id: created.id,
+            kind: "file",
+            label: file.name,
+            file_name: file.name,
+            storage_path: path,
+            size_bytes: file.size,
+            url: "",
+            category: docCategory(file.name, file.webkitRelativePath || file.__path)
+          });
+          if (docErr) {
+            await sb.storage.from("project-docs").remove([path]);
+            throw docErr;
+          }
+        } catch (e) {
+          failedUploads.push(`${file.name}: ${e.message || e}`);
+        }
+      }
+      if (failedUploads.length) {
+        alert(`${scan.files.length - failedUploads.length} of ${scan.files.length} files uploaded. ` +
+          `${failedUploads.length} failed and can be added later from Documents.\n\n` +
+          failedUploads.slice(0, 5).join("\n"));
       }
     }
     setBusy(false);
@@ -5554,7 +5572,7 @@ function NewProjectModal({
     className: "np-scan"
   }, /*#__PURE__*/React.createElement("div", {
     className: "np-scan-h"
-  }, scan.charter ? `Read “${scan.charter}” as the charter · ${scan.files.length} other file${scan.files.length === 1 ? "" : "s"} found` : `${scan.files.length} file${scan.files.length === 1 ? "" : "s"} found`), scan.note && /*#__PURE__*/React.createElement("div", {
+  }, scan.charter ? `Read ${scan.charter} · ${scan.files.length} project file${scan.files.length === 1 ? "" : "s"} ready` : `${scan.files.length} file${scan.files.length === 1 ? "" : "s"} found`), scan.note && /*#__PURE__*/React.createElement("div", {
     className: "np-scan-note"
   }, scan.note), scan.files.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
     className: "np-scan-check"
@@ -5562,7 +5580,7 @@ function NewProjectModal({
     type: "checkbox",
     checked: registerDocs,
     onChange: e => setRegisterDocs(e.target.checked)
-  }), "Register these as project documents"), /*#__PURE__*/React.createElement("div", {
+  }), "Upload these as project documents"), /*#__PURE__*/React.createElement("div", {
     className: "np-scan-files"
   }, scan.files.slice(0, 8).map((f, i) => /*#__PURE__*/React.createElement("span", {
     key: i,
@@ -5571,7 +5589,7 @@ function NewProjectModal({
     className: "np-scan-file np-scan-more"
   }, "+", scan.files.length - 8, " more")), /*#__PURE__*/React.createElement("div", {
     className: "np-scan-hint"
-  }, "Files are recorded by name so the register matches the folder. Uploading the files themselves, or linking them in SharePoint, is done from the Documents tab."))), extract && /*#__PURE__*/React.createElement("div", {
+  }, "The actual selected files will upload when you create the project. Afterward, click any file in Documents to open it."))), extract && /*#__PURE__*/React.createElement("div", {
     className: "np-extracted"
   }, /*#__PURE__*/React.createElement("div", {
     className: "np-extracted-h"
@@ -5774,11 +5792,6 @@ function Documents({
     }
   }
   async function download(d) {
-    // The tab MUST be opened synchronously, inside the click. Calling
-    // window.open() after an await is no longer treated as user-initiated, so
-    // browsers block it — silently. That is why clicking a file appeared to do
-    // nothing at all rather than showing an error.
-    const tab = window.open("", "_blank");
     try {
       // Files uploaded before the path bug was fixed have a trailing newline
       // baked into storage_path, which makes the signed URL fail. Trim it so
@@ -5791,10 +5804,11 @@ function Documents({
       if (error) throw error;
       if (!data || !data.signedUrl) throw new Error("No link came back from storage.");
 
-      if (tab && !tab.closed) tab.location = data.signedUrl;
-      else window.location.assign(data.signedUrl); // popup blocked — same tab
+      // Navigate the current tab. This works from local HTML files, installed
+      // home-screen apps and locked-down browsers that block asynchronous
+      // popups. The browser Back button returns to the same project.
+      window.location.assign(data.signedUrl);
     } catch (e) {
-      if (tab && !tab.closed) tab.close();
       const m = e.message || String(e);
       alert(/not found|does not exist/i.test(m)
         ? "That file isn't in storage. It may have been registered by name from " +
@@ -5802,6 +5816,72 @@ function Documents({
           "to add it, or Add link to point at where it actually lives."
         : "Couldn't open file: " + m);
     }
+  }
+  // Attach the real file to an existing filename-only row instead of creating
+  // a duplicate document entry.
+  async function uploadRegistered(d, file) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const safe = file.name.replace(/[^\w.\-]+/g, "_");
+      const path = `${projectId}/${Date.now()}_${safe}`;
+      const { error: upErr } = await sb.storage.from("project-docs").upload(path, file);
+      if (upErr) throw upErr;
+      const { error: rowErr } = await sb.from("documents").update({
+        kind: "file",
+        label: d.label || file.name,
+        file_name: file.name,
+        storage_path: path,
+        size_bytes: file.size,
+        url: null
+      }).eq("id", d.id);
+      if (rowErr) {
+        await sb.storage.from("project-docs").remove([path]);
+        throw rowErr;
+      }
+      say && say("File attached");
+      await load();
+    } catch (e) {
+      alert("Upload failed: " + (e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function connectListed(files) {
+    const selected = Array.from(files || []);
+    const waiting = (docs || []).filter(d => d.kind !== "file" || !d.storage_path);
+    if (!selected.length || !waiting.length) return;
+    const byName = new Map(selected.map(f => [f.name.trim().toLowerCase(), f]));
+    const matches = waiting.map(d => ({ d, file: byName.get(String(d.label || d.file_name || "").trim().toLowerCase()) })).filter(x => x.file);
+    if (!matches.length) {
+      alert("None of the selected filenames match the listed documents. Select the original files from this project's folder.");
+      return;
+    }
+    setBusy(true);
+    const failed = [];
+    for (let i = 0; i < matches.length; i++) {
+      const { d, file } = matches[i];
+      try {
+        const safe = file.name.replace(/[^\w.\-]+/g, "_");
+        const path = `${projectId}/${Date.now()}_${i}_${safe}`;
+        const { error: upErr } = await sb.storage.from("project-docs").upload(path, file);
+        if (upErr) throw upErr;
+        const { error: rowErr } = await sb.from("documents").update({
+          kind: "file", file_name: file.name, storage_path: path,
+          size_bytes: file.size, url: null
+        }).eq("id", d.id);
+        if (rowErr) {
+          await sb.storage.from("project-docs").remove([path]);
+          throw rowErr;
+        }
+      } catch (e) {
+        failed.push(`${file.name}: ${e.message || e}`);
+      }
+    }
+    setBusy(false);
+    await load();
+    say && say(`${matches.length - failed.length} listed file${matches.length - failed.length === 1 ? "" : "s"} connected`);
+    if (failed.length) alert("Some files could not be connected:\n\n" + failed.slice(0, 5).join("\n"));
   }
   // Attach a URL to a document that was registered by name during a folder
   // scan. These arrive with no link, which is what made clicking them reload
@@ -5935,6 +6015,17 @@ function Documents({
       onUpload([...e.target.files]);
       e.target.value = "";
     }
+  })), /*#__PURE__*/React.createElement("label", {
+    className: "btn btn-ghost btn-sm docs-upload",
+    title: "Match selected files to filenames already listed"
+  }, busy ? "Working…" : "Connect listed files", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    multiple: true,
+    disabled: busy,
+    onChange: e => {
+      connectListed(e.target.files);
+      e.target.value = "";
+    }
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => setLinkForm(!linkForm)
@@ -6043,10 +6134,19 @@ function Documents({
   // A document registered from a folder scan has a name but no link yet. An
   // anchor with an empty href navigates to the current page, which reloads the
   // whole app and dumps you back at the start — so don't render one.
-  isEditor ? /*#__PURE__*/React.createElement("button", {
+  isEditor ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+    className: "btn btn-primary btn-xs docs-upload"
+  }, "Upload file", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    disabled: busy,
+    onChange: e => {
+      uploadRegistered(d, e.target.files[0]);
+      e.target.value = "";
+    }
+  })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-xs docs-addlink",
     onClick: () => setLinking({ id: d.id, label: d.label, url: "" })
-  }, "Add link") : /*#__PURE__*/React.createElement("span", {
+  }, "Add link")) : /*#__PURE__*/React.createElement("span", {
     className: "btn btn-ghost btn-xs btn-dead",
     title: "No link recorded for this document yet"
   }, "No link"), isEditor && /*#__PURE__*/React.createElement("button", {
