@@ -5152,12 +5152,16 @@ function MunisSyncDemo({ projects, onClose }) {
   const [source, setSource] = useState("Microsoft 365 mailbox");
   const [schedule, setSchedule] = useState("Nightly at 2:00 AM");
   const [phase, setPhase] = useState("ready");
-  const rows = projects.map(p => ({
-    id: p.id,
-    title: p.title,
-    key: p.meta?.munisProjectNo || p.meta?.projectNo || ""
-  }));
-  const matched = rows.filter(r => r.key).length;
+  const rows = projects.map(p => {
+    const key = String(p.meta?.munisProjectNo || p.meta?.projectNo || "").trim();
+    return {
+      id: p.id,
+      title: p.title,
+      key,
+      valid: !!key && !/^(n\/?a|none|not applicable|-|—)$/i.test(key)
+    };
+  });
+  const matched = rows.filter(r => r.valid).length;
   const runDemo = () => {
     setPhase("running");
     setTimeout(() => setPhase("preview"), 850);
@@ -5202,8 +5206,8 @@ function MunisSyncDemo({ projects, onClose }) {
     className: "munis-row",
     key: r.id
   }, /*#__PURE__*/React.createElement("span", null, r.title), /*#__PURE__*/React.createElement("code", null, r.key || "No project number"), /*#__PURE__*/React.createElement("span", {
-    className: r.key ? "munis-ok" : "munis-warn"
-  }, r.key ? "Ready to match" : "Needs ID"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: r.valid ? "munis-ok" : "munis-warn"
+  }, r.valid ? "Ready to match" : "Needs ID"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "munis-row"
   }, "No projects are available to match.")), /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-actions"
