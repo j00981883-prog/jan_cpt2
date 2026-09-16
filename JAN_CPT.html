@@ -3981,6 +3981,18 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
 .cloud-fh{font-size:11px;font-weight:800;color:#5A6B7C;text-transform:uppercase;letter-spacing:.07em;margin:16px 0 11px}
 .cloud-modal-actions{display:flex;gap:10px;margin-top:20px}
+.munis-demo-note{margin:0 0 16px;padding:12px 14px;border:1px solid #F0D28A;border-radius:10px;background:#FFF8E5;color:#72520A;font-size:13px;line-height:1.45}
+.munis-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:16px 0}
+.munis-step{padding:13px;border:1px solid #DDE8F0;border-radius:11px;background:#F7FAFC;color:#40576B;font-size:12px;line-height:1.4}
+.munis-step b{display:block;margin-bottom:5px;color:#0B3D6E;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.munis-settings{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.munis-settings label span{display:block;margin-bottom:6px;color:#5A6B7C;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em}
+.munis-settings select{width:100%;padding:10px;border:1px solid #D7E4EE;border-radius:9px;background:#fff;color:#18334C;font:14px/1.3 inherit}
+.munis-preview{margin-top:16px;border:1px solid #D7E4EE;border-radius:12px;overflow:hidden}
+.munis-preview-h{padding:12px 14px;background:#EAF5FB;color:#0B4D73;font-size:13px;font-weight:800}
+.munis-row{display:grid;grid-template-columns:1fr 140px 105px;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
+.munis-row code{overflow:hidden;text-overflow:ellipsis;color:#18334C}.munis-ok{color:#2E7D52;font-weight:800}.munis-warn{color:#A56B12;font-weight:800}
+@media(max-width:640px){.munis-flow{grid-template-columns:1fr 1fr}.munis-settings{grid-template-columns:1fr}.munis-row{grid-template-columns:1fr}.munis-row code{white-space:normal}}
 .btn-back{background:rgba(255,255,255,.16)!important}
 @media(max-width:640px){.cloud-f2,.cloud-f3{grid-template-columns:1fr}}
 @media(max-width:640px){.cloud-project-tabs{width:100%;box-sizing:border-box}.cloud-project-tab{flex:1;padding:9px 7px;font-size:12px}.cloud-project-tab b{display:none}}
@@ -4867,6 +4879,7 @@ function ProjectPicker({
 }) {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [showMunisDemo, setShowMunisDemo] = useState(false);
   const [projectTab, setProjectTab] = useState("all");
   const [clock, setClock] = useState("");
   useEffect(() => {
@@ -5028,7 +5041,10 @@ function ProjectPicker({
     className: "cloud-sub"
   }, projects === null ? "Loading…" : `${projects.length} tracked`, display && " · updates automatically")), isEditor && !display && /*#__PURE__*/React.createElement("div", {
     className: "cloud-bar-actions"
-  }, /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "cloud-btn cloud-btn-ghost",
+    onClick: () => setShowMunisDemo(true)
+  }, "MUNIS auto-sync"), /*#__PURE__*/React.createElement("label", {
     className: "cloud-btn cloud-btn-ghost cloud-file"
   }, "Import .json", /*#__PURE__*/React.createElement("input", {
     type: "file",
@@ -5118,7 +5134,10 @@ function ProjectPicker({
     }, (cvar * 100).toFixed(2), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Days lost"), /*#__PURE__*/React.createElement("b", {
       className: elapsed > 0 && daysLost > tlim * elapsed ? "cloud-bad" : ""
     }, daysLost))));
-  }))), creating && /*#__PURE__*/React.createElement(NewProjectModal, {
+  }))), showMunisDemo && /*#__PURE__*/React.createElement(MunisSyncDemo, {
+    projects: projects || [],
+    onClose: () => setShowMunisDemo(false)
+  }), creating && /*#__PURE__*/React.createElement(NewProjectModal, {
     initialCategory: projectTab === "internal" ? "internal" : "capital",
     onClose: () => setCreating(false),
     onDone: category => {
@@ -5127,6 +5146,75 @@ function ProjectPicker({
       bump();
     }
   }));
+}
+
+function MunisSyncDemo({ projects, onClose }) {
+  const [source, setSource] = useState("Microsoft 365 mailbox");
+  const [schedule, setSchedule] = useState("Nightly at 2:00 AM");
+  const [phase, setPhase] = useState("ready");
+  const rows = projects.map(p => ({
+    id: p.id,
+    title: p.title,
+    key: p.meta?.munisProjectNo || p.meta?.projectNo || ""
+  }));
+  const matched = rows.filter(r => r.key).length;
+  const runDemo = () => {
+    setPhase("running");
+    setTimeout(() => setPhase("preview"), 850);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "cloud-modal-bg",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "cloud-modal",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "cloud-modal-close",
+    onClick: onClose,
+    "aria-label": "Close MUNIS sync demo"
+  }, "×"), /*#__PURE__*/React.createElement("h3", {
+    className: "cloud-modal-h"
+  }, "MUNIS automatic sync"), /*#__PURE__*/React.createElement("div", {
+    className: "munis-demo-note"
+  }, /*#__PURE__*/React.createElement("b", null, "Demo mode — not connected."), " This preview does not contact MUNIS or change any project amounts."), /*#__PURE__*/React.createElement("div", {
+    className: "munis-flow"
+  }, [["1", "Receive report", "MUNIS sends a scheduled CSV or Excel report."], ["2", "Validate", "JAN CPT checks the date and required columns."], ["3", "Match", "Rows match using the MUNIS project number."], ["4", "Update", "Approved fields refresh and the sync is logged."]].map(s => /*#__PURE__*/React.createElement("div", {
+    className: "munis-step",
+    key: s[0]
+  }, /*#__PURE__*/React.createElement("b", null, s[0], ". ", s[1]), s[2]))), /*#__PURE__*/React.createElement("div", {
+    className: "munis-settings"
+  }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Report delivery"), /*#__PURE__*/React.createElement("select", {
+    value: source,
+    onChange: e => setSource(e.target.value)
+  }, ["Microsoft 365 mailbox", "SharePoint / OneDrive", "Secure SFTP folder"].map(x => /*#__PURE__*/React.createElement("option", {
+    key: x
+  }, x)))), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Schedule"), /*#__PURE__*/React.createElement("select", {
+    value: schedule,
+    onChange: e => setSchedule(e.target.value)
+  }, ["Nightly at 2:00 AM", "Every Monday at 6:00 AM", "Monthly after close"].map(x => /*#__PURE__*/React.createElement("option", {
+    key: x
+  }, x))))), /*#__PURE__*/React.createElement("div", {
+    className: "munis-preview"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "munis-preview-h"
+  }, phase === "preview" ? `${matched} matched · ${rows.length - matched} need a MUNIS project number · 0 financial records changed` : "Project matching preview"), rows.slice(0, 8).map(r => /*#__PURE__*/React.createElement("div", {
+    className: "munis-row",
+    key: r.id
+  }, /*#__PURE__*/React.createElement("span", null, r.title), /*#__PURE__*/React.createElement("code", null, r.key || "No project number"), /*#__PURE__*/React.createElement("span", {
+    className: r.key ? "munis-ok" : "munis-warn"
+  }, r.key ? "Ready to match" : "Needs ID"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "munis-row"
+  }, "No projects are available to match.")), /*#__PURE__*/React.createElement("div", {
+    className: "cloud-modal-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "cloud-btn cloud-btn-gold",
+    onClick: runDemo,
+    disabled: phase === "running"
+  }, phase === "running" ? "Checking sample report…" : phase === "preview" ? "Run demo again" : "Run demo sync"), /*#__PURE__*/React.createElement("button", {
+    className: "cloud-btn cloud-btn-ghost",
+    onClick: onClose
+  }, "Close"))));
 }
 
 // ---------------------------------------------------------------------------
