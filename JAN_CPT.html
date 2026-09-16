@@ -3990,7 +3990,17 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .munis-settings select{width:100%;padding:10px;border:1px solid #D7E4EE;border-radius:9px;background:#fff;color:#18334C;font:14px/1.3 inherit}
 .munis-preview{margin-top:16px;border:1px solid #D7E4EE;border-radius:12px;overflow:hidden}
 .munis-preview-h{padding:12px 14px;background:#EAF5FB;color:#0B4D73;font-size:13px;font-weight:800}
-.munis-row{display:grid;grid-template-columns:1fr 140px 105px;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
+.munis-filebar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0}
+.munis-file{position:relative;overflow:hidden;display:inline-flex;align-items:center;cursor:pointer}
+.munis-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.munis-filename{font-size:12.5px;color:#5A6B7C;min-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.munis-error{margin:10px 0;padding:10px 12px;border:1px solid #EFC9C9;border-radius:9px;background:#FBE9E9;color:#A32626;font-size:13px}
+.munis-row{display:grid;grid-template-columns:minmax(150px,1fr) 125px 145px 120px;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
+.munis-money{color:#18334C;font-weight:700}.munis-muted{color:#8296A8}
+.munis-runs{margin-top:14px;padding:13px 14px;border:1px solid #D7E4EE;border-radius:11px;background:#F8FBFD}
+.munis-runs-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#0B3D6E;margin-bottom:7px}
+.munis-run{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
+.munis-run:first-of-type{border-top:0}.munis-run b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#18334C}
 .munis-row code{overflow:hidden;text-overflow:ellipsis;color:#18334C}.munis-ok{color:#2E7D52;font-weight:800}.munis-warn{color:#A56B12;font-weight:800}
 @media(max-width:640px){.munis-flow{grid-template-columns:1fr 1fr}.munis-settings{grid-template-columns:1fr}.munis-row{grid-template-columns:1fr}.munis-row code{white-space:normal}}
 .btn-back{background:rgba(255,255,255,.16)!important}
@@ -5148,24 +5158,122 @@ function ProjectPicker({
   }));
 }
 
-function MunisSyncDemo({ projects, onClose }) {
-  const [source, setSource] = useState("Microsoft 365 mailbox");
-  const [schedule, setSchedule] = useState("Nightly at 2:00 AM");
-  const [phase, setPhase] = useState("ready");
-  const rows = projects.map(p => {
-    const key = String(p.meta?.munisProjectNo || p.meta?.projectNo || "").trim();
-    return {
-      id: p.id,
-      title: p.title,
-      key,
-      valid: !!key && !/^(n\/?a|none|not applicable|-|—)$/i.test(key)
-    };
-  });
-  const matched = rows.filter(r => r.valid).length;
-  const runDemo = () => {
-    setPhase("running");
-    setTimeout(() => setPhase("preview"), 850);
+function parseMunisCsv(text) {
+  const table = [];
+  let row = [], field = "", quoted = false;
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => {
+    if (row.some(v => String(v).trim() !== "")) table.push(row);
+    row = [];
   };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") pushField();
+    else if (ch === "\n") { pushField(); pushRow(); }
+    else if (ch !== "\r") field += ch;
+  }
+  pushField(); pushRow();
+  if (quoted) throw new Error("The CSV has an unfinished quoted value.");
+  if (table.length < 2) throw new Error("The report needs a header row and at least one project row.");
+  const clean = v => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const headers = table[0].map(clean);
+  return table.slice(1).map(cols => {
+    const item = {};
+    headers.forEach((h, i) => { if (h) item[h] = String(cols[i] ?? "").trim(); });
+    return item;
+  });
+}
+
+function munisValue(row, aliases) {
+  for (const alias of aliases) {
+    const key = alias.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (row[key] !== undefined && row[key] !== "") return row[key];
+  }
+  return "";
+}
+
+function munisMoney(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  const negative = /^\(.*\)$/.test(raw);
+  const parsed = Number(raw.replace(/[$,()\s]/g, ""));
+  if (!Number.isFinite(parsed)) return null;
+  return negative ? -parsed : parsed;
+}
+
+function normalizeMunisRow(row) {
+  return {
+    projectNo: munisValue(row, ["munis_project_number", "munis project number", "project_number", "project no", "project id"]),
+    title: munisValue(row, ["project_title", "project name", "description"]),
+    budget: munisMoney(munisValue(row, ["revised_budget", "revised budget", "project budget", "budget"])),
+    actual: munisMoney(munisValue(row, ["actual_spend", "actual expenditures", "expenditures", "spent", "ytd actual"])),
+    encumbrances: munisMoney(munisValue(row, ["encumbrances", "encumbered", "open commitments"])),
+    available: munisMoney(munisValue(row, ["available_balance", "available budget", "remaining balance"])),
+    reportDate: munisValue(row, ["report_date", "as of date", "report date"])
+  };
+}
+
+function munisKey(value) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function MunisSyncDemo({ projects, onClose }) {
+  const [source, setSource] = useState("SharePoint / OneDrive");
+  const [schedule, setSchedule] = useState("Every hour");
+  const [fileName, setFileName] = useState("");
+  const [records, setRecords] = useState([]);
+  const [error, setError] = useState("");
+  const [stagedRuns, setStagedRuns] = useState([]);
+  useEffect(() => {
+    let active = true;
+    if (!sb) return () => { active = false; };
+    sb.from("munis_sync_runs").select("id,report_name,row_count,matched_count,change_count,created_at,status")
+      .order("created_at", { ascending: false }).limit(5).then(({ data }) => {
+        if (active && data) setStagedRuns(data);
+      });
+    return () => { active = false; };
+  }, []);
+  const projectMap = useMemo(() => {
+    const map = new Map();
+    projects.forEach(p => {
+      const key = munisKey(p.meta?.munisProjectNo || p.meta?.projectNo);
+      if (key && !/^(N\/?A|NONE|NOTAPPLICABLE|-|—)$/.test(key)) map.set(key, p);
+    });
+    return map;
+  }, [projects]);
+  const rows = useMemo(() => records.map((record, index) => {
+    const project = projectMap.get(munisKey(record.projectNo));
+    const currentBudget = project ? Number(project.meta?.primeBudget) || 0 : null;
+    const budgetChanged = !!project && record.budget !== null && Math.abs(record.budget - currentBudget) >= .01;
+    return { index, record, project, currentBudget, budgetChanged };
+  }), [records, projectMap]);
+  const matched = rows.filter(r => r.project).length;
+  const changes = rows.filter(r => r.budgetChanged).length;
+
+  async function loadReport(file) {
+    setError(""); setRecords([]); setFileName(file?.name || "");
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name)) { setError("Use a CSV report for this first version. Excel support comes after the MUNIS columns are confirmed."); return; }
+    if (file.size > 2 * 1024 * 1024) { setError("That report is larger than 2 MB. Export only the project-summary rows."); return; }
+    try {
+      const parsed = parseMunisCsv(await file.text()).map(normalizeMunisRow);
+      if (!parsed.some(r => r.projectNo)) throw new Error("No project-number column was found. Use the template to see the required headings.");
+      setRecords(parsed);
+    } catch (e) { setError(e.message || String(e)); }
+  }
+
+  function downloadTemplate() {
+    const csv = "munis_project_number,project_title,revised_budget,actual_spend,encumbrances,available_balance,report_date\n2026-001,Sample Airport Project,1200000,425000,315000,460000,09/16/2026\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "JAN_CPT_MUNIS_REPORT_TEMPLATE.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   return /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-bg",
     onClick: onClose
@@ -5179,11 +5287,11 @@ function MunisSyncDemo({ projects, onClose }) {
     "aria-label": "Close MUNIS sync demo"
   }, "×"), /*#__PURE__*/React.createElement("h3", {
     className: "cloud-modal-h"
-  }, "MUNIS automatic sync"), /*#__PURE__*/React.createElement("div", {
+  }, "MUNIS report sync"), /*#__PURE__*/React.createElement("div", {
     className: "munis-demo-note"
-  }, /*#__PURE__*/React.createElement("b", null, "Demo mode — not connected."), " This preview does not contact MUNIS or change any project amounts."), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("b", null, "Safe preview mode."), " Select a MUNIS CSV to check matches and proposed changes. No project amounts are changed."), /*#__PURE__*/React.createElement("div", {
     className: "munis-flow"
-  }, [["1", "Receive report", "MUNIS sends a scheduled CSV or Excel report."], ["2", "Validate", "JAN CPT checks the date and required columns."], ["3", "Match", "Rows match using the MUNIS project number."], ["4", "Update", "Approved fields refresh and the sync is logged."]].map(s => /*#__PURE__*/React.createElement("div", {
+  }, [["1", "Receive", "SharePoint syncs the scheduled MUNIS CSV."], ["2", "Validate", "JAN CPT checks required columns and amounts."], ["3", "Match", "Rows match by MUNIS project number."], ["4", "Approve", "An editor reviews before any future update."]].map(s => /*#__PURE__*/React.createElement("div", {
     className: "munis-step",
     key: s[0]
   }, /*#__PURE__*/React.createElement("b", null, s[0], ". ", s[1]), s[2]))), /*#__PURE__*/React.createElement("div", {
@@ -5191,31 +5299,56 @@ function MunisSyncDemo({ projects, onClose }) {
   }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Report delivery"), /*#__PURE__*/React.createElement("select", {
     value: source,
     onChange: e => setSource(e.target.value)
-  }, ["Microsoft 365 mailbox", "SharePoint / OneDrive", "Secure SFTP folder"].map(x => /*#__PURE__*/React.createElement("option", {
+  }, ["SharePoint / OneDrive", "Microsoft 365 mailbox", "Secure SFTP folder"].map(x => /*#__PURE__*/React.createElement("option", {
     key: x
   }, x)))), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Schedule"), /*#__PURE__*/React.createElement("select", {
     value: schedule,
     onChange: e => setSchedule(e.target.value)
-  }, ["Nightly at 2:00 AM", "Every Monday at 6:00 AM", "Monthly after close"].map(x => /*#__PURE__*/React.createElement("option", {
+  }, ["Every hour", "Nightly at 2:00 AM", "Every Monday at 6:00 AM", "Monthly after close"].map(x => /*#__PURE__*/React.createElement("option", {
     key: x
   }, x))))), /*#__PURE__*/React.createElement("div", {
+    className: "munis-filebar"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "cloud-btn cloud-btn-gold munis-file"
+  }, "Select MUNIS CSV", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: ".csv,text/csv",
+    onChange: e => loadReport(e.target.files[0])
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "cloud-btn cloud-btn-ghost",
+    onClick: downloadTemplate
+  }, "Download template"), /*#__PURE__*/React.createElement("span", {
+    className: "munis-filename"
+  }, fileName || "No report selected")), error && /*#__PURE__*/React.createElement("div", {
+    className: "munis-error"
+  }, error), /*#__PURE__*/React.createElement("div", {
     className: "munis-preview"
   }, /*#__PURE__*/React.createElement("div", {
     className: "munis-preview-h"
-  }, phase === "preview" ? `${matched} matched · ${rows.length - matched} need a MUNIS project number · 0 financial records changed` : "Project matching preview"), rows.slice(0, 8).map(r => /*#__PURE__*/React.createElement("div", {
+  }, records.length ? `${matched} matched · ${rows.length - matched} need attention · ${changes} budget changes found · 0 records changed` : "Select a report to preview project matches"), rows.slice(0, 12).map(r => /*#__PURE__*/React.createElement("div", {
     className: "munis-row",
-    key: r.id
-  }, /*#__PURE__*/React.createElement("span", null, r.title), /*#__PURE__*/React.createElement("code", null, r.key || "No project number"), /*#__PURE__*/React.createElement("span", {
-    className: r.valid ? "munis-ok" : "munis-warn"
-  }, r.valid ? "Ready to match" : "Needs ID"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
+    key: r.index
+  }, /*#__PURE__*/React.createElement("span", null, r.project?.title || r.record.title || "Unnamed project"), /*#__PURE__*/React.createElement("code", null, r.record.projectNo || "No project number"), /*#__PURE__*/React.createElement("span", {
+    className: r.record.budget === null ? "munis-muted" : "munis-money"
+  }, r.record.budget === null ? "No budget in report" : `${r.currentBudget === null ? "Report" : fmtMoney(r.currentBudget) + " →"} ${fmtMoney(r.record.budget)}`), /*#__PURE__*/React.createElement("span", {
+    className: r.project ? r.budgetChanged ? "munis-warn" : "munis-ok" : "munis-warn"
+  }, r.project ? r.budgetChanged ? "Change found" : "Matched" : "Needs match"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "munis-row"
-  }, "No projects are available to match.")), /*#__PURE__*/React.createElement("div", {
+  }, "The template includes budget, actual spending, encumbrances and available balance.")), /*#__PURE__*/React.createElement("div", {
+    className: "munis-runs"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "munis-runs-h"
+  }, "Automatic folder previews"), stagedRuns.length ? stagedRuns.map(run => /*#__PURE__*/React.createElement("div", {
+    className: "munis-run",
+    key: run.id
+  }, /*#__PURE__*/React.createElement("b", null, run.report_name), /*#__PURE__*/React.createElement("span", null, `${run.matched_count}/${run.row_count} matched`), /*#__PURE__*/React.createElement("span", {
+    className: run.change_count ? "munis-warn" : "munis-ok"
+  }, `${run.change_count} changes`))) : /*#__PURE__*/React.createElement("span", {
+    className: "munis-muted"
+  }, "No staged folder reports yet. The automation remains preview-only.")), /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-actions"
   }, /*#__PURE__*/React.createElement("button", {
-    className: "cloud-btn cloud-btn-gold",
-    onClick: runDemo,
-    disabled: phase === "running"
-  }, phase === "running" ? "Checking sample report…" : phase === "preview" ? "Run demo again" : "Run demo sync"), /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-ghost",
     onClick: onClose
   }, "Close"))));
