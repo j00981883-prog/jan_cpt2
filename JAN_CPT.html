@@ -3974,8 +3974,9 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-card-stats b{display:block;font-size:16px;color:#fff;margin-top:2px}
 .cloud-bad{color:#FF8A82}
 .cloud-modal-bg{position:fixed;inset:0;background:rgba(7,26,51,.62);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9000}
-.cloud-modal{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:660px;max-height:90vh;overflow:auto}
+.cloud-modal{position:relative;background:#fff;border-radius:16px;padding:26px;width:100%;max-width:660px;max-height:90vh;overflow:auto}
 .cloud-modal-h{margin:0 0 18px;font-size:21px;color:#0B3D6E;font-weight:800}
+.cloud-modal-close{position:sticky;top:0;float:right;z-index:2;width:34px;height:34px;margin:-8px -8px 0 10px;border:1px solid #D7E4EE;border-radius:50%;background:#fff;color:#486174;font:800 18px/1 inherit;cursor:pointer;box-shadow:0 4px 12px rgba(7,26,51,.12)}
 .cloud-f2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 .cloud-f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px}
 .cloud-fh{font-size:11px;font-weight:800;color:#5A6B7C;text-transform:uppercase;letter-spacing:.07em;margin:16px 0 11px}
@@ -3993,7 +3994,7 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .internal-save{border:0;border-radius:9px;padding:10px 17px;background:var(--gold);color:#071A33;font:800 13px/1 inherit;cursor:pointer}
 .internal-save:disabled{opacity:.55}
 .internal-wrap{max-width:900px;margin:0 auto;padding:28px 22px}
-.internal-tabs{display:flex;gap:7px;margin-bottom:18px}
+.internal-tabs{display:flex;gap:7px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px}
 .internal-tab{border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:9px 15px;background:rgba(7,26,51,.28);
   color:#C9DDEB;font:700 13px/1 inherit;cursor:pointer}
 .internal-tab.on{background:#fff;color:#0B3D6E}
@@ -4014,7 +4015,7 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .internal-adds{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid #E5EDF3}
 .internal-add{border:1px dashed #9FC0DC;border-radius:9px;padding:8px 11px;background:#F4F9FD;color:#1B6F9E;font:700 12px/1 inherit;cursor:pointer}
 .internal-msg{margin-top:14px;color:#2E7D52;font-size:13px;font-weight:700}
-.internal-docs .pad{padding:0}.internal-docs .panel{margin:0}
+.internal-docs .pad{padding:0}.internal-docs .panel{margin:0 0 14px}
 .internal-hero{margin-bottom:18px;padding:24px;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:linear-gradient(135deg,rgba(46,155,214,.23),rgba(7,26,51,.35));box-shadow:0 18px 45px rgba(0,0,0,.18)}
 .internal-kicker{margin-bottom:8px;color:#8ED3F4;font-size:10.5px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
 .internal-hero h1{margin:0;color:#fff;font:700 30px/1.08 var(--disp)}
@@ -5647,6 +5648,10 @@ function NewProjectModal({
       setErr("Give the project a title.");
       return;
     }
+    if (f.projectCategory === "internal" && f.startISO && f.targetISO && f.targetISO < f.startISO) {
+      setErr("Target completion must be on or after the start date.");
+      return;
+    }
     setBusy(true);
     setErr("");
     const datedDays = f.startISO && f.targetISO ? Math.max(1, Math.ceil((new Date(f.targetISO + "T12:00:00") - new Date(f.startISO + "T12:00:00")) / 86400000)) : 0;
@@ -5760,7 +5765,12 @@ function NewProjectModal({
   }, /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal",
     onClick: e => e.stopPropagation()
-  }, /*#__PURE__*/React.createElement("h3", {
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "cloud-modal-close",
+    onClick: onClose,
+    "aria-label": "Close new project"
+  }, "×"), /*#__PURE__*/React.createElement("h3", {
     className: "cloud-modal-h"
   }, "New project"), /*#__PURE__*/React.createElement("label", {
     className: "cloud-f"
@@ -7450,6 +7460,8 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   const setS = key => e => setSched(s => ({ ...s, [key]: e.target.value }));
   async function save() {
     if (!String(meta.title || "").trim()) { setMsg("Project name is required."); return; }
+    const completion = meta.targetISO || meta.internalCompletion || "";
+    if (sched.startISO && completion && completion < sched.startISO) { setMsg("Target completion must be on or after the start date."); return; }
     setBusy(true);
     setMsg("");
     const nextMeta = {
