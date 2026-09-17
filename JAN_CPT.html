@@ -45,15 +45,18 @@ window.addEventListener("error", function (e) {
       'padding:30px;border:1px solid #DCE6F0;border-radius:14px;background:#fff">' +
       '<h1 style="color:#0B3D6E;font-size:22px;margin:0 0 12px">Something went wrong starting the app</h1>' +
       '<p style="color:#44586b;line-height:1.6">' + (e.message || "Unknown error") + '</p>' +
-      '<p style="color:#44586b;line-height:1.6;font-size:14px">Most common causes: the config block ' +
-      'at the top of this file has a typo (both values must stay inside quotes), or this computer ' +
-      "can't reach the internet to load the libraries.</p></div>";
+      '<p style="color:#44586b;line-height:1.6;font-size:14px">The dashboard could not load one of ' +
+      'its required libraries. Refresh the page once. If the message returns, ask IT to allow ' +
+      'cdn.jsdelivr.net and unpkg.com.</p></div>';
   }
 });
 </script>
 
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- Use jsDelivr first and automatically fall back to unpkg if either file is blocked. -->
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/react@18/umd/react.production.min.js'"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const {
