@@ -2854,7 +2854,7 @@ function GrantTab({
     }, m), /*#__PURE__*/React.createElement("label", {
       className: "ms-date",
       title: `Completion date for ${m}`
-    }, /*#__PURE__*/React.createElement("span", null, sec.completionDates?.[m] ? shortGrantDate(sec.completionDates[m]) : "MM/DD/YY"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("input", {
       type: "date",
       value: sec.completionDates?.[m] || "",
       "aria-label": `Completion date for ${m}`,
@@ -3832,11 +3832,11 @@ main{max-width:1080px;margin:0 auto}
 .ms-label{flex:1;min-width:120px;color:var(--ink);line-height:1.35}
 .ms-done .ms-label{color:var(--dim)}
 .ms-done .ms-num{color:var(--green)}
-.ms-date{position:relative;flex:none;display:flex;align-items:center;justify-content:flex-end;min-width:82px;
-  color:var(--dim);font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer}
-.ms-date>span{padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;color:#5A6B7C}
-.ms-done .ms-date>span{border-color:#B9E3C6;background:#EEF8F1;color:#2E7D52}
-.ms-date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.ms-date{flex:none;display:flex;align-items:center;justify-content:flex-end;min-width:132px}
+.ms-date input{width:132px;box-sizing:border-box;padding:5px 7px;border:1px solid var(--line);border-radius:7px;
+  background:#fff;color:#5A6B7C;font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer}
+.ms-date input:focus{outline:none;border-color:var(--sky);box-shadow:0 0 0 3px rgba(46,155,214,.15)}
+.ms-done .ms-date input{border-color:#B9E3C6;background:#EEF8F1;color:#2E7D52}
 @media(max-width:520px){.ms-row{flex-wrap:wrap}.ms-label{min-width:calc(100% - 58px)}.ms-date{margin-left:58px}}
 .track-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
 .doc-list{display:flex;flex-direction:column}
