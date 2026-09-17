@@ -1789,9 +1789,14 @@ function MunisUpdateStatus({ projectId = null, portfolio = false }) {
     className: "munis-status-card" + (portfolio ? " munis-status-portfolio" : "")
   }, /*#__PURE__*/React.createElement("div", {
     className: "munis-status-head"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "munis-status-icon",
+    "aria-hidden": "true"
+  }, "M"), /*#__PURE__*/React.createElement("span", {
     className: "munis-status-dot " + (latest ? applied ? "is-live" : "is-preview" : "is-waiting")
-  }), /*#__PURE__*/React.createElement("b", null, "MUNIS updates")), latest && /*#__PURE__*/React.createElement("span", {
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "munis-status-title"
+  }, /*#__PURE__*/React.createElement("b", null, "MUNIS updates"), /*#__PURE__*/React.createElement("small", null, "Automatic financial activity"))), latest && /*#__PURE__*/React.createElement("span", {
     className: "munis-status-state " + (applied ? "is-live" : "is-preview")
   }, applied ? "Updated" : latest.status === "error" ? "Error" : "Preview only")), runs === null ? /*#__PURE__*/React.createElement("div", {
     className: "munis-status-empty"
@@ -4059,21 +4064,26 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .munis-run{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
 .munis-run:first-of-type{border-top:0}.munis-run b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#18334C}
 .munis-row code{overflow:hidden;text-overflow:ellipsis;color:#18334C}.munis-ok{color:#2E7D52;font-weight:800}.munis-warn{color:#A56B12;font-weight:800}
-.munis-status-card{margin:16px 0;padding:17px 18px;border:1px solid #D7E4EE;border-radius:13px;background:linear-gradient(135deg,#F8FBFD,#EEF6FB);box-shadow:0 5px 18px rgba(11,61,110,.06)}
-.munis-status-portfolio{margin:18px 0 4px;background:#fff}
+.munis-status-card{position:relative;overflow:hidden;margin:16px 0;padding:19px 20px;border:1px solid #D3E2ED;border-radius:15px;background:linear-gradient(135deg,#fff 0%,#F1F8FC 100%);box-shadow:0 9px 28px rgba(11,61,110,.09)}
+.munis-status-card::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(180deg,#2E9BD6,#0B3D6E 62%,#F2A900)}
+.munis-status-card::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;right:-92px;top:-108px;background:rgba(46,155,214,.07);pointer-events:none}
+.munis-status-portfolio{margin:18px 0 4px;background:linear-gradient(135deg,#fff,#F5FAFD)}
 .munis-status-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px;color:#0B3D6E}
-.munis-status-head>div{display:flex;align-items:center;gap:8px}.munis-status-head b{font-family:var(--disp);font-size:15px;letter-spacing:.05em;text-transform:uppercase}
-.munis-status-dot{width:10px;height:10px;border-radius:50%;background:#94A7B8;box-shadow:0 0 0 4px rgba(148,167,184,.14)}
+.munis-status-head>div{display:flex;align-items:center;gap:9px;min-width:0}.munis-status-head b{font-family:var(--disp);font-size:15px;letter-spacing:.05em;text-transform:uppercase}
+.munis-status-icon{width:35px;height:35px;flex:none;border-radius:10px;display:grid!important;place-items:center;background:linear-gradient(145deg,#0B3D6E,#1479AB);color:#fff;font-family:var(--disp);font-size:16px;font-weight:800;box-shadow:0 5px 13px rgba(11,61,110,.2)}
+.munis-status-title{display:block!important;line-height:1.1}.munis-status-title b{display:block}.munis-status-title small{display:block;margin-top:4px;color:#718699;font-size:10.5px;font-weight:600;letter-spacing:.01em}
+.munis-status-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#94A7B8;box-shadow:0 0 0 4px rgba(148,167,184,.14)}
 .munis-status-dot.is-live{background:#2E9E63;box-shadow:0 0 0 4px rgba(46,158,99,.14)}
 .munis-status-dot.is-preview{background:#F2A900;box-shadow:0 0 0 4px rgba(242,169,0,.15)}
 .munis-status-state{padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
 .munis-status-state.is-live{background:#E7F5EC;color:#267A4E}.munis-status-state.is-preview{background:#FFF3D6;color:#8A6414}
 .munis-status-meta{display:grid;grid-template-columns:1.1fr 1.4fr 1fr;gap:10px;margin-bottom:13px}
-.munis-status-meta>div{padding:10px 11px;border:1px solid #E2EBF2;border-radius:9px;background:rgba(255,255,255,.85);min-width:0}
+.munis-status-meta>div{padding:11px 12px;border:1px solid #E0EAF1;border-radius:10px;background:rgba(255,255,255,.92);min-width:0;box-shadow:0 2px 7px rgba(11,61,110,.035)}
 .munis-status-meta span{display:block;margin-bottom:4px;color:#718699;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
 .munis-status-meta b{display:block;color:#18334C;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .munis-change-title{margin:2px 0 5px;color:#5A6B7C;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em}
-.munis-change-list{border-top:1px solid #DCE7EF}.munis-change-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 2px;border-bottom:1px solid #E5EDF3}
+.munis-change-list{border:1px solid #E0EAF1;border-radius:10px;background:rgba(255,255,255,.78);overflow:hidden}.munis-change-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 12px;border-bottom:1px solid #E5EDF3}
+.munis-change-row:last-child{border-bottom:0}
 .munis-change-row>div:first-child{min-width:0}.munis-change-row>div:first-child b{display:block;color:#18334C;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.munis-change-row>div:first-child span{color:#8296A8;font-size:11px}
 .munis-change-values{display:flex;align-items:center;gap:7px;flex:none;font-family:var(--mono);font-size:11.5px}.munis-change-values span{color:#8296A8;text-decoration:line-through}.munis-change-values em{color:#9AAEBE;font-style:normal}.munis-change-values b{color:#0B5C88}
 .munis-status-empty{color:#718699;font-size:12.5px;line-height:1.5}.munis-status-good{padding:8px 0;color:#2E7D52}.munis-status-more{padding-top:7px;color:#5A6B7C;font-size:11.5px;font-weight:700}
