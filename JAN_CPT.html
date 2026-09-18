@@ -168,11 +168,6 @@ function expandItems(items) {
   return out;
 }
 
-function shortGrantDate(iso) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
-  const [y, m, d] = iso.split("-");
-  return `${m}/${d}/${y.slice(-2)}`;
-}
 function localTodayISO() {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -2804,12 +2799,6 @@ function GrantTab({
       completionDates: {}
     }]);
   };
-  const setDoc = (d, url) => set({
-    docs: {
-      ...(grant.docs || {}),
-      [d]: url
-    }
-  });
   const msPct = execSum.msDone / (execSum.msTotal || 1) * 100;
   const fundingTotal = Number(meta.fundingTotal) || 0;
   const constructionBudget = Number(meta.totalBudget) || 0;
