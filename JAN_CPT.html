@@ -3529,9 +3529,12 @@ function Learn({
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(measure);
     };
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", onScroll, {
+      capture: true,
+      passive: true
+    });
     window.addEventListener("resize", onScroll);
-    const iv = setInterval(measure, 600); // catch late-rendering panels
+    const iv = setInterval(measure, 1000); // catch late-rendering panels without overworking phones
     return () => {
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
@@ -4038,12 +4041,12 @@ main{max-width:1080px;margin:0 auto}
 .cl::before,.cl::after{content:"";position:absolute;background:#fff;border-radius:100px}
 .cl::before{width:52%;height:150%;top:-58%;left:16%}
 .cl::after{width:38%;height:118%;top:-40%;right:16%}
-.cl1{width:340px;height:74px;top:13%;animation:drift 96s linear infinite}
-.cl2{width:230px;height:52px;top:32%;opacity:.10;animation:drift 128s linear infinite;animation-delay:-30s}
-.cl3{width:430px;height:90px;top:55%;opacity:.12;animation:drift 112s linear infinite;animation-delay:-58s}
-.cl4{width:200px;height:46px;top:73%;opacity:.09;animation:drift 146s linear infinite;animation-delay:-14s}
-.cl5{width:300px;height:64px;top:87%;opacity:.08;animation:drift 120s linear infinite;animation-delay:-76s}
-@keyframes drift{from{transform:translateX(-40vw)}to{transform:translateX(115vw)}}
+.cl1{width:340px;height:74px;top:13%;animation:cloudSkyDrift 96s linear infinite}
+.cl2{width:230px;height:52px;top:32%;opacity:.10;animation:cloudSkyDrift 128s linear infinite;animation-delay:-30s}
+.cl3{width:430px;height:90px;top:55%;opacity:.12;animation:cloudSkyDrift 112s linear infinite;animation-delay:-58s}
+.cl4{width:200px;height:46px;top:73%;opacity:.09;animation:cloudSkyDrift 146s linear infinite;animation-delay:-14s}
+.cl5{width:300px;height:64px;top:87%;opacity:.08;animation:cloudSkyDrift 120s linear infinite;animation-delay:-76s}
+@keyframes cloudSkyDrift{from{transform:translateX(-40vw)}to{transform:translateX(115vw)}}
 
 /* portfolio content sits above the sky */
 .cloud-hdr,.cloud-main{position:relative;z-index:1}
