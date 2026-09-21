@@ -4343,6 +4343,18 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-display .cloud-card-stats b{font-size:26px;color:#fff}
 .cloud-display .cloud-bad{color:#FF8A82}
 .cloud-display .cloud-pill{font-size:13px;padding:6px 15px}
+.cloud-display .cloud-card{background:linear-gradient(145deg,#102C47,#0B2137);box-shadow:0 14px 32px rgba(0,0,0,.18)}
+.cloud-display .cloud-card::after{display:none}
+.cloud-display .cloud-card-top{padding-bottom:11px;border-bottom:1px solid rgba(126,157,184,.18)}
+.cloud-display .cloud-type{margin:2px 0 18px;background:rgba(46,155,214,.12);border-color:rgba(105,189,234,.32)}
+.wall-card-progress{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:19px;padding-top:17px;border-top:1px solid rgba(126,157,184,.18)}
+.wall-card-meter-label{display:flex;justify-content:space-between;gap:10px;margin-bottom:7px;color:#89A9C0;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.wall-card-meter-label b{color:#D8EAF5;font-size:12px}
+.wall-card-meter-track{height:9px;overflow:hidden;border-radius:999px;background:#061827;box-shadow:inset 0 1px 3px rgba(0,0,0,.4)}
+.wall-card-meter-fill{height:100%;border-radius:999px;animation:wallBarGrow .8s cubic-bezier(.2,.8,.3,1) both}
+.wall-card-meter-fill.budget{background:linear-gradient(90deg,#2E9BD6,#73D5F5)}
+.wall-card-meter-fill.schedule{background:linear-gradient(90deg,#56C78A,#9BE3B9)}
+.wall-card-meter-fill.schedule.risk{background:linear-gradient(90deg,#F2A900,#FF6B61)}
 .wall-rollup{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:24px}
 .wall-stat{background:#0E2740;border:1px solid #1B3D5E;border-radius:14px;padding:18px 20px;text-align:center;animation:wallStatIn .45s cubic-bezier(.2,.8,.3,1) both;transition:transform .2s,border-color .2s,box-shadow .2s}
 .wall-stat:nth-child(2){animation-delay:.05s}.wall-stat:nth-child(3){animation-delay:.1s}.wall-stat:nth-child(4){animation-delay:.15s}.wall-stat:nth-child(5){animation-delay:.2s}.wall-stat:nth-child(6){animation-delay:.25s}
@@ -5375,6 +5387,8 @@ function ProjectPicker({
   }, visibleProjects.map(p => {
     const meta = p.meta || {};
     const st = summarize(p);
+    const budgetUsedPct = st.total > 0 ? Math.min(100, Math.max(0, st.spend / st.total * 100)) : 0;
+    const schedulePct = st.weeks > 0 ? Math.min(100, Math.max(0, st.elapsed / st.weeks * 100)) : 0;
     const {
       total,
       weeks,
@@ -5410,7 +5424,31 @@ function ProjectPicker({
       className: cvar > blim ? "cloud-bad" : ""
     }, (cvar * 100).toFixed(2), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Days lost"), /*#__PURE__*/React.createElement("b", {
       className: elapsed > 0 && daysLost > tlim * elapsed ? "cloud-bad" : ""
-    }, daysLost))), isEditor && !display && /*#__PURE__*/React.createElement("div", {
+    }, daysLost))), display && /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-progress"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-label"
+    }, /*#__PURE__*/React.createElement("span", null, "Budget used"), /*#__PURE__*/React.createElement("b", null, budgetUsedPct.toFixed(0), "%")), /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-track"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-fill budget",
+      style: {
+        width: `${budgetUsedPct}%`
+      }
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-label"
+    }, /*#__PURE__*/React.createElement("span", null, "Schedule elapsed"), /*#__PURE__*/React.createElement("b", null, schedulePct.toFixed(0), "%")), /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-track"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wall-card-meter-fill schedule" + (stop ? " risk" : ""),
+      style: {
+        width: `${schedulePct}%`
+      }
+    })))), isEditor && !display && /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         justifyContent: "flex-end",
