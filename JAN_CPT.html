@@ -4047,7 +4047,7 @@ main{max-width:1080px;margin:0 auto}
 
 /* portfolio content sits above the sky */
 .cloud-hdr,.cloud-main{position:relative;z-index:1}
-.cloud-hdr{background:rgba(7,26,51,.42);border-bottom:1px solid rgba(255,255,255,.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;padding:15px 26px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.cloud-hdr{background:rgba(7,26,51,.42);border-bottom:1px solid rgba(255,255,255,.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;padding:15px 26px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;animation:cloudHeaderIn .5s cubic-bezier(.2,.8,.3,1) both}
 .cloud-hdr-left{display:flex;align-items:center;gap:14px}
 .cloud-hdr-logo{height:44px;border-radius:7px;display:block}
 .cloud-hdr-eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#BFE3F5;font-weight:700}
@@ -4060,8 +4060,8 @@ main{max-width:1080px;margin:0 auto}
 .cloud-signout:hover{opacity:1}
 .cloud-main{max-width:1180px;margin:0 auto;padding:26px 26px 70px}
 .cloud-bar{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
-.cloud-bar-actions{display:flex;gap:10px}
-.cloud-h2{margin:0;font-size:27px;color:#fff;font-weight:800;letter-spacing:.01em}
+.cloud-bar-actions{display:flex;gap:10px;animation:cloudToolsIn .5s ease .16s both}
+.cloud-h2{margin:0;font-size:27px;color:#fff;font-weight:800;letter-spacing:.01em;animation:cloudTitleIn .55s cubic-bezier(.2,.8,.3,1) .08s both}
 .cloud-project-tabs{display:flex;gap:6px;margin:-4px 0 18px;padding:5px;width:max-content;max-width:100%;
   border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(7,26,51,.28)}
 .cloud-project-tab{border:0;border-radius:8px;padding:9px 14px;background:transparent;color:#BDD3E5;
@@ -4082,12 +4082,16 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
 .cloud-empty{background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.22);border-radius:14px;padding:44px;text-align:center;color:#9FC0DC}
 .cloud-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
-.cloud-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-top:3px solid #2E9BD6;border-radius:14px;padding:20px;cursor:pointer;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);transition:box-shadow .16s,transform .16s,background .16s;animation:cloudCardIn .48s cubic-bezier(.2,.8,.3,1) both}
+.cloud-card{position:relative;overflow:hidden;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-top:3px solid #2E9BD6;border-radius:14px;padding:20px;cursor:pointer;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);transition:box-shadow .16s,transform .16s,background .16s;animation:cloudCardIn .48s cubic-bezier(.2,.8,.3,1) both}
+.cloud-card::after{content:"";position:absolute;inset:0;width:42%;background:linear-gradient(105deg,transparent,rgba(255,255,255,.09),transparent);transform:translateX(-170%) skewX(-12deg);pointer-events:none}
+.cloud-card:hover::after{animation:cloudCardSweep .8s ease both}
 .cloud-card:nth-child(2){animation-delay:.06s}.cloud-card:nth-child(3){animation-delay:.12s}.cloud-card:nth-child(4){animation-delay:.18s}.cloud-card:nth-child(n+5){animation-delay:.24s}
 .cloud-card:hover{background:rgba(255,255,255,.11);box-shadow:0 14px 36px rgba(0,0,0,.32);transform:translateY(-2px)}
 .cloud-card-stop{border-top-color:#FF6B61}
 .cloud-card-top{display:flex;justify-content:space-between;gap:11px;align-items:flex-start;margin-bottom:5px}
 .cloud-card-title{font-weight:800;font-size:17px;color:#fff;line-height:1.28;flex:1}
+.cloud-card-title::after{content:"  ›";display:inline-block;color:#69BDEA;opacity:.55;transform:translateX(0);transition:transform .18s,opacity .18s}
+.cloud-card:hover .cloud-card-title::after{opacity:1;transform:translateX(4px)}
 .cloud-card-sub{font-size:13px;color:#8FB0CC;margin-bottom:14px}
 .cloud-pill{flex-shrink:0;padding:4px 11px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;animation:cloudStatusBreathe 4s ease-in-out 1s infinite}
 .cloud-pill-green{background:#E4F2EA;color:#2E7D52}
@@ -4100,9 +4104,17 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 @keyframes cloudCardIn{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes cloudStatusBreathe{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.08)}}
 @keyframes cloudCountPop{0%{transform:scale(.7);opacity:.25}70%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes cloudHeaderIn{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+@keyframes cloudTitleIn{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+@keyframes cloudToolsIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+@keyframes cloudCardSweep{from{transform:translateX(-170%) skewX(-12deg)}to{transform:translateX(340%) skewX(-12deg)}}
+@keyframes cloudModalIn{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes cloudStatusIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes munisIconFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes munisDotPulse{0%{box-shadow:0 0 0 0 currentColor}70%,100%{box-shadow:0 0 0 7px transparent}}
 .cloud-bad{color:#FF8A82}
-.cloud-modal-bg{position:fixed;inset:0;background:rgba(7,26,51,.62);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9000}
-.cloud-modal{position:relative;background:#fff;border-radius:16px;padding:26px;width:100%;max-width:660px;max-height:90vh;overflow:auto}
+.cloud-modal-bg{position:fixed;inset:0;background:rgba(7,26,51,.62);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9000;animation:fadeIn .2s ease both}
+.cloud-modal{position:relative;background:#fff;border-radius:16px;padding:26px;width:100%;max-width:660px;max-height:90vh;overflow:auto;animation:cloudModalIn .34s cubic-bezier(.2,.8,.3,1) both}
 .cloud-modal-h{margin:0 0 18px;font-size:21px;color:#0B3D6E;font-weight:800}
 .cloud-modal-close{position:sticky;top:0;float:right;z-index:2;width:34px;height:34px;margin:-8px -8px 0 10px;border:1px solid #D7E4EE;border-radius:50%;background:#fff;color:#486174;font:800 18px/1 inherit;cursor:pointer;box-shadow:0 4px 12px rgba(7,26,51,.12)}
 .cloud-f2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
@@ -4130,17 +4142,17 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .munis-run{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
 .munis-run:first-of-type{border-top:0}.munis-run b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#18334C}
 .munis-row code{overflow:hidden;text-overflow:ellipsis;color:#18334C}.munis-ok{color:#2E7D52;font-weight:800}.munis-warn{color:#A56B12;font-weight:800}
-.munis-status-card{position:relative;overflow:hidden;margin:16px 0;padding:19px 20px;border:1px solid #D3E2ED;border-radius:15px;background:linear-gradient(135deg,#fff 0%,#F1F8FC 100%);box-shadow:0 9px 28px rgba(11,61,110,.09)}
+.munis-status-card{position:relative;overflow:hidden;margin:16px 0;padding:19px 20px;border:1px solid #D3E2ED;border-radius:15px;background:linear-gradient(135deg,#fff 0%,#F1F8FC 100%);box-shadow:0 9px 28px rgba(11,61,110,.09);animation:cloudStatusIn .55s cubic-bezier(.2,.8,.3,1) .2s both}
 .munis-status-card::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(180deg,#2E9BD6,#0B3D6E 62%,#F2A900)}
 .munis-status-card::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;right:-92px;top:-108px;background:rgba(46,155,214,.07);pointer-events:none}
 .munis-status-portfolio{margin:18px 0 4px;background:linear-gradient(135deg,#fff,#F5FAFD)}
 .munis-status-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px;color:#0B3D6E}
 .munis-status-head>div{display:flex;align-items:center;gap:9px;min-width:0}.munis-status-head b{font-family:var(--disp);font-size:15px;letter-spacing:.05em;text-transform:uppercase}
-.munis-status-icon{width:35px;height:35px;flex:none;border-radius:10px;display:grid!important;place-items:center;background:linear-gradient(145deg,#0B3D6E,#1479AB);color:#fff;font-family:var(--disp);font-size:16px;font-weight:800;box-shadow:0 5px 13px rgba(11,61,110,.2)}
+.munis-status-icon{width:35px;height:35px;flex:none;border-radius:10px;display:grid!important;place-items:center;background:linear-gradient(145deg,#0B3D6E,#1479AB);color:#fff;font-family:var(--disp);font-size:16px;font-weight:800;box-shadow:0 5px 13px rgba(11,61,110,.2);animation:munisIconFloat 3.4s ease-in-out infinite}
 .munis-status-title{display:block!important;line-height:1.1}.munis-status-title b{display:block}.munis-status-title small{display:block;margin-top:4px;color:#718699;font-size:10.5px;font-weight:600;letter-spacing:.01em}
 .munis-status-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#94A7B8;box-shadow:0 0 0 4px rgba(148,167,184,.14)}
-.munis-status-dot.is-live{background:#2E9E63;box-shadow:0 0 0 4px rgba(46,158,99,.14)}
-.munis-status-dot.is-preview{background:#F2A900;box-shadow:0 0 0 4px rgba(242,169,0,.15)}
+.munis-status-dot.is-live{background:#2E9E63;box-shadow:0 0 0 4px rgba(46,158,99,.14);animation:munisDotPulse 2s ease-out infinite}
+.munis-status-dot.is-preview{background:#F2A900;box-shadow:0 0 0 4px rgba(242,169,0,.15);animation:munisDotPulse 2s ease-out infinite}
 .munis-status-state{padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
 .munis-status-state.is-live{background:#E7F5EC;color:#267A4E}.munis-status-state.is-preview{background:#FFF3D6;color:#8A6414}
 .munis-status-meta{display:grid;grid-template-columns:1.1fr 1.4fr 1fr;gap:10px;margin-bottom:13px}
@@ -4332,9 +4344,12 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .cloud-display .cloud-bad{color:#FF8A82}
 .cloud-display .cloud-pill{font-size:13px;padding:6px 15px}
 .wall-rollup{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:24px}
-.wall-stat{background:#0E2740;border:1px solid #1B3D5E;border-radius:14px;padding:18px 20px;text-align:center}
+.wall-stat{background:#0E2740;border:1px solid #1B3D5E;border-radius:14px;padding:18px 20px;text-align:center;animation:wallStatIn .45s cubic-bezier(.2,.8,.3,1) both;transition:transform .2s,border-color .2s,box-shadow .2s}
+.wall-stat:nth-child(2){animation-delay:.05s}.wall-stat:nth-child(3){animation-delay:.1s}.wall-stat:nth-child(4){animation-delay:.15s}.wall-stat:nth-child(5){animation-delay:.2s}.wall-stat:nth-child(6){animation-delay:.25s}
+.wall-stat:hover{transform:translateY(-3px);border-color:#2E9BD6;box-shadow:0 10px 25px rgba(0,0,0,.22)}
 .wall-stat b{display:block;font-size:38px;font-weight:800;color:#fff;line-height:1.05}
 .wall-stat i{display:block;font-style:normal;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase;color:#7E9DB8;margin-top:6px}
+@keyframes wallStatIn{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
 .wall-ok b{color:#7BD6A2}
 .wall-watch b{color:#F2C368}
 .wall-stop b{color:#FF8A82}
