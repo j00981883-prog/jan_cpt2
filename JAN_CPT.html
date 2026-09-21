@@ -120,8 +120,44 @@ const reimbShare = m => {
 
 /* Seeded demo actuals — first four weeks, telling a realistic story.
    Week 3 runs hot on weather delay; week 4 pushes variance toward the limit. */
-// The full FAA sequence, kept as the default for a new FAA section.
-const GRANT_MILESTONES = ["Application Submitted", "Grant Awarded", "Grant Executed", "Sponsor Certifications Submitted", "Quarterly Reports Submitted", "Final Inspection Complete", "Final Acceptance Letter", "Closeout Package Submitted", "Closeout Approved"];
+// Full FAA AIP/AIG administration sequence used by every FAA grant section.
+const GRANT_MILESTONES = [
+  "Pre-Application for Federal Assistance Submitted",
+  "FAA Funding Consideration Letter Received (\u201cGo Letter\u201d)",
+  "Submit Signed Engineering Agreement to FAA",
+  "Submit Environmental Determination to FAA",
+  "Submit 90% Engineer\u2019s Report, Plans, and Specifications, and safety plan (CSPP) to FAA",
+  "Engineer\u2019s Report, Plans, and Specification, and safety plan (CSPP), approved by FAA",
+  "JMAA Board Approval to Advertise for Bids, approve project budget, and award the project to the lowest and best bidder after receipt of the bids",
+  "Advertise for Bids",
+  "Pre-Bid Conference",
+  "Bid Opening",
+  "Application for Federal Assistance Submitted",
+  "Sponsor Certification and Lobbying Certification Submitted",
+  "Grant Award Received",
+  "Grant Award Accepted by the JMAA Board & City of Jackson",
+  "Executed Grant Agreement",
+  "Contract Executed",
+  "SCPD Approved by Consultant & JMAA",
+  "Notification to Proceed \u2013 Construction Services",
+  "1st Quarter Southern Region Quarterly AIP Grant Performance Report",
+  "1st Quarter Construction Progress Report",
+  "FAA Form 5100-140, Annual Performance Report Submitted",
+  "2nd Quarter Southern Region Quarterly AIP Grant Performance Report",
+  "2nd Quarter FAA Form 5370-1, Construction Progress & Inspection Report",
+  "3rd Quarter Southern Region Quarterly AIP Grant Performance Report",
+  "3rd Quarter FAA Form 5370-1, Construction Progress & Inspection Report",
+  "4th Quarter Southern Region Quarterly AIP Grant Performance Report",
+  "4th Quarter FAA Form 5370-1, Construction Progress & Inspection Report",
+  "Substantial Completion \u2013 Construction Services",
+  "Final Acceptance",
+  "Project Closeout Package Submitted",
+  "Project Record (As-Built) Drawings Submitted",
+  "Final Invoice Received",
+  "Final Invoice Processed",
+  "Grant Closeout Documents Submission to FAA Complete",
+  "Final Grant Closeout Correspondence Received from FAA"
+];
 
 // A project can carry several grants, each with its own checklist — two FAA AIG
 // grants plus an MDOT matching grant, for example, and MDOT does not require
@@ -134,15 +170,37 @@ const MDOT_MILESTONES = ["Grant Awarded", "Grant Executed", "Quarterly Reports S
 // reporting cycle actually looks like.
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
 const GRANT_TEMPLATES = {
+  "FAA AIP": GRANT_MILESTONES,
   "FAA AIG": GRANT_MILESTONES,
   "MDOT AIP-Matching": MDOT_MILESTONES,
   "Custom": []
 };
 
+const LEGACY_FAA_MILESTONES = {
+  "Application Submitted": "Application for Federal Assistance Submitted",
+  "Grant Awarded": "Grant Award Received",
+  "Grant Executed": "Executed Grant Agreement",
+  "Sponsor Certifications Submitted": "Sponsor Certification and Lobbying Certification Submitted",
+  "Final Acceptance Letter": "Final Acceptance",
+  "Closeout Package Submitted": "Project Closeout Package Submitted",
+  "Closeout Approved": "Final Grant Closeout Correspondence Received from FAA"
+};
+
+function currentFaaSection(section) {
+  if (!section || !/^FAA A(?:IP|IG)$/i.test(section.type || "")) return section;
+  const done = { ...(section.done || {}) };
+  const completionDates = { ...(section.completionDates || {}) };
+  Object.entries(LEGACY_FAA_MILESTONES).forEach(([oldName, newName]) => {
+    if (done[oldName] && done[newName] == null) done[newName] = true;
+    if (completionDates[oldName] && !completionDates[newName]) completionDates[newName] = completionDates[oldName];
+  });
+  return { ...section, items: GRANT_MILESTONES, done, completionDates };
+}
+
 // Older projects stored a single flat { milestones: {...} } map. Convert that to
 // one FAA section so nothing already entered is lost.
 function grantSections(grant) {
-  if (grant && Array.isArray(grant.sections) && grant.sections.length) return grant.sections;
+  if (grant && Array.isArray(grant.sections) && grant.sections.length) return grant.sections.map(currentFaaSection);
   const legacy = grant && grant.milestones || {};
   return [{
     id: "faa-1",
@@ -7084,7 +7142,7 @@ function Assistant({
     className: "ai-intro"
   }, /*#__PURE__*/React.createElement("p", null, "Tell me what to change in plain language. Weekly figures, pay applications, grant milestones, contractor and engineer names, budgets, dates, DBE goals, funding shares and change orders can all be updated."), /*#__PURE__*/React.createElement("div", {
     className: "ai-suggest"
-  }, ["week 5 spend was 128,000 with one day lost to rain", "mark Grant Executed complete", "the prime contractor is McInnis Systems", "set the DBE goal to 7.51%", "change order 1, added conduit, $12,400 and 5 days"].map((x, i) => /*#__PURE__*/React.createElement("button", {
+  }, ["week 5 spend was 128,000 with one day lost to rain", "mark Executed Grant Agreement complete", "the prime contractor is McInnis Systems", "set the DBE goal to 7.51%", "change order 1, added conduit, $12,400 and 5 days"].map((x, i) => /*#__PURE__*/React.createElement("button", {
     key: i,
     className: "ai-chip",
     onClick: () => ask(x)
