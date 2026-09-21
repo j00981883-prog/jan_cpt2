@@ -5312,26 +5312,30 @@ function ProjectPicker({
     onClick: e => changeProjectCategory(e, p)
     }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project") : /*#__PURE__*/React.createElement("span", {
     className: "cloud-type"
-  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project"), isEditor && !display && /*#__PURE__*/React.createElement("button", {
-    className: "cloud-btn cloud-btn-ghost",
-    style: {
-      marginTop: "8px",
-      padding: "4px 8px",
-      fontSize: "11px",
-      lineHeight: "1.2",
-      width: "fit-content",
-      color: "#B42318",
-      borderColor: "#F4C7C3"
-    },
-    title: "Delete this project",
-    onClick: e => deleteProject(e, p)
-  }, "Delete project"), /*#__PURE__*/React.createElement("div", {
+  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project"), /*#__PURE__*/React.createElement("div", {
       className: "cloud-card-stats"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Budget"), /*#__PURE__*/React.createElement("b", null, "$", Math.round(total).toLocaleString())), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Week"), /*#__PURE__*/React.createElement("b", null, elapsed, " / ", weeks)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Cost variance"), /*#__PURE__*/React.createElement("b", {
       className: cvar > blim ? "cloud-bad" : ""
     }, (cvar * 100).toFixed(2), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Days lost"), /*#__PURE__*/React.createElement("b", {
       className: elapsed > 0 && daysLost > tlim * elapsed ? "cloud-bad" : ""
-    }, daysLost))));
+    }, daysLost))), isEditor && !display && /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "flex-end",
+        marginTop: "12px"
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "cloud-btn cloud-btn-ghost",
+      style: {
+        padding: "4px 8px",
+        fontSize: "11px",
+        lineHeight: "1.2",
+        color: "#B42318",
+        borderColor: "#F4C7C3"
+      },
+      title: "Delete this project",
+      onClick: e => deleteProject(e, p)
+    }, "Delete project")));
   }))), showMunisDemo && /*#__PURE__*/React.createElement(MunisSyncDemo, {
     projects: projects || [],
     onClose: () => setShowMunisDemo(false)
