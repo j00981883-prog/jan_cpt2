@@ -4377,10 +4377,13 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 /* On phones, decorative layers must never cover project controls. */
 @media(max-width:640px){
   .cloud-card::after{display:none!important}
+  .hdr::after,.hdr-sky{display:none!important}
   .ai-fab{right:12px;bottom:12px;width:46px;height:46px;padding:0;justify-content:center;font-size:0}
   .ai-fab-star{font-size:18px}
   .ai-panel{inset:10px;width:auto;height:auto;border-radius:14px}
-  .learn-dim{background:rgba(7,26,51,.38)}
+  .learn-layer{pointer-events:none!important}
+  .learn-dim,.learn-ring{display:none!important;pointer-events:none!important}
+  .learn-card{position:fixed!important;left:12px!important;right:12px!important;bottom:12px!important;top:auto!important;width:auto!important;max-height:44vh;overflow:auto;transform:none!important;pointer-events:auto!important}
 }
 
 .ai-attached{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#EEF4FA;border-top:1px solid #E1EAF3;font-size:12px;color:#3F566B}
