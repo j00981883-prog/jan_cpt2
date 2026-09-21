@@ -73,6 +73,7 @@ const {
    ============================================================ */
 
 const TUTORIAL_KEY = "jmaa-runway-16l34r-tutorial-seen";
+const DELETE_PASSWORD = "jmaa123";
 
 /* ---------- project constants (from the project charter) ---------- */
 const DEFAULT_PROJECT = {
@@ -2358,7 +2359,16 @@ function PayApps({
     say("Pay application " + n + " added");
   };
   const del = (id, n) => {
-    if (confirm("Remove pay application " + n + "?")) setPayApps(payApps.filter(p => p.id !== id));
+    const password = prompt("Enter the deletion password to remove pay application " + n + ":");
+    if (password === null) return;
+    if (password !== DELETE_PASSWORD) {
+      alert("Incorrect deletion password. The pay application was not removed.");
+      return;
+    }
+    if (confirm("Permanently remove pay application " + n + "?")) {
+      setPayApps(payApps.filter(p => p.id !== id));
+      say("Pay application " + n + " removed");
+    }
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
@@ -5122,6 +5132,36 @@ function ProjectPicker({
       alert("Couldn't change project type: " + error.message);
     }
   }
+  async function deleteProject(e, project) {
+    e.stopPropagation();
+    if (!isEditor) return;
+    const password = prompt('Enter the deletion password for "' + project.title + '":');
+    if (password === null) return;
+    if (password !== DELETE_PASSWORD) {
+      alert("Incorrect deletion password. The project was not deleted.");
+      return;
+    }
+    if (!confirm('Permanently delete "' + project.title + '" and all of its records? This cannot be undone.')) return;
+    try {
+      const { data: visits, error: visitLookupError } = await sb.from("field_visits").select("id").eq("project_id", project.id);
+      if (visitLookupError) throw visitLookupError;
+      const visitIds = (visits || []).map(v => v.id);
+      if (visitIds.length) {
+        const { error } = await sb.from("field_visit_items").delete().in("visit_id", visitIds);
+        if (error) throw error;
+      }
+      for (const table of ["field_reports", "field_checklist", "field_visits", "documents", "pay_apps", "weekly_actuals"]) {
+        const { error } = await sb.from(table).delete().eq("project_id", project.id);
+        if (error) throw error;
+      }
+      const { error } = await sb.from("projects").delete().eq("id", project.id);
+      if (error) throw error;
+      setProjects(list => (list || []).filter(p => p.id !== project.id));
+      alert('Project "' + project.title + '" was deleted.');
+    } catch (error) {
+      alert("Couldn't delete the project: " + (error.message || error));
+    }
+  }
   const counts = (projects || []).reduce((a, p) => {
     a[projectCategory(p)]++;
     return a;
@@ -5270,9 +5310,18 @@ function ProjectPicker({
     className: "cloud-type",
     title: "Click to move this project to the other section",
     onClick: e => changeProjectCategory(e, p)
-  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project") : /*#__PURE__*/React.createElement("span", {
+    }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project") : /*#__PURE__*/React.createElement("span", {
     className: "cloud-type"
-  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project"), /*#__PURE__*/React.createElement("div", {
+  }, projectCategory(p) === "internal" ? "Internal / Maintenance" : "Capital project"), isEditor && !display && /*#__PURE__*/React.createElement("button", {
+    className: "cloud-btn cloud-btn-ghost",
+    style: {
+      marginTop: "10px",
+      color: "#B42318",
+      borderColor: "#F4C7C3"
+    },
+    title: "Delete this project",
+    onClick: e => deleteProject(e, p)
+  }, "Delete project"), /*#__PURE__*/React.createElement("div", {
       className: "cloud-card-stats"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Budget"), /*#__PURE__*/React.createElement("b", null, "$", Math.round(total).toLocaleString())), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Week"), /*#__PURE__*/React.createElement("b", null, elapsed, " / ", weeks)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", null, "Cost variance"), /*#__PURE__*/React.createElement("b", {
       className: cvar > blim ? "cloud-bad" : ""
