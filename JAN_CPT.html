@@ -4354,8 +4354,34 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .wall-watch b{color:#F2C368}
 .wall-stop b{color:#FF8A82}
 .wall-gold b{color:#F2A900}
+.wall-visuals{display:grid;grid-template-columns:.8fr 1.1fr 1.1fr;gap:16px;margin-bottom:24px}
+.wall-chart{min-height:245px;padding:20px;border:1px solid #1B3D5E;border-radius:14px;background:linear-gradient(145deg,#0E2740,#0A2035);box-shadow:0 12px 28px rgba(0,0,0,.15);animation:wallStatIn .5s cubic-bezier(.2,.8,.3,1) both}
+.wall-chart:nth-child(2){animation-delay:.08s}.wall-chart:nth-child(3){animation-delay:.16s}
+.wall-chart-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.wall-chart-head span{display:block;color:#7E9DB8;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.wall-chart-head b{display:block;margin-top:4px;color:#E9F4FB;font-size:14px}
+.wall-health-body{display:flex;align-items:center;justify-content:center;gap:25px;min-height:172px}
+.wall-donut{width:130px;height:130px;flex:none;border-radius:50%;padding:14px;box-sizing:border-box;animation:wallDonutIn .8s cubic-bezier(.2,.8,.3,1) .2s both}
+.wall-donut>div{width:100%;height:100%;display:grid;place-items:center;align-content:center;border-radius:50%;background:#0B2137;box-shadow:inset 0 0 0 1px #1B3D5E}
+.wall-donut b{color:#fff;font-size:30px;line-height:1}.wall-donut span{margin-top:4px;color:#7E9DB8;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.wall-legend{min-width:105px}.wall-legend>div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:7px;padding:6px 0;color:#B9CEDD;font-size:11.5px}
+.wall-legend i{width:8px;height:8px;border-radius:50%}.wall-legend i.good{background:#56C78A}.wall-legend i.watch{background:#F2A900}.wall-legend i.stop{background:#FF6B61}.wall-legend b{color:#fff}
+.wall-bars{display:flex;flex-direction:column;gap:12px}.wall-bar-label{display:flex;justify-content:space-between;gap:12px;margin-bottom:5px;color:#AFC6D8;font-size:10.5px}.wall-bar-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wall-bar-label b{flex:none;color:#EAF5FB;font-size:10.5px}
+.wall-bar-track{height:8px;overflow:hidden;border-radius:999px;background:#071A2C}.wall-bar-fill{height:100%;border-radius:999px;transform-origin:left;animation:wallBarGrow .8s cubic-bezier(.2,.8,.3,1) both}.wall-bar-fill.budget{background:linear-gradient(90deg,#2E9BD6,#74D4F4)}.wall-bar-fill.exposure{background:linear-gradient(90deg,#F2A900,#FFD778)}
+@keyframes wallDonutIn{from{opacity:0;transform:rotate(-80deg) scale(.75)}to{opacity:1;transform:none}}
+@keyframes wallBarGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @media(max-width:1400px){.wall-rollup{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:760px){.wall-rollup{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1200px){.wall-visuals{grid-template-columns:1fr 1fr}.wall-health-chart{grid-column:1/-1}}
+@media(max-width:760px){.wall-rollup{grid-template-columns:repeat(2,1fr)}.wall-visuals{grid-template-columns:1fr}.wall-health-chart{grid-column:auto}}
+
+/* On phones, decorative layers must never cover project controls. */
+@media(max-width:640px){
+  .cloud-card::after{display:none!important}
+  .ai-fab{right:12px;bottom:12px;width:46px;height:46px;padding:0;justify-content:center;font-size:0}
+  .ai-fab-star{font-size:18px}
+  .ai-panel{inset:10px;width:auto;height:auto;border-radius:14px}
+  .learn-dim{background:rgba(7,26,51,.38)}
+}
 
 .ai-attached{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#EEF4FA;border-top:1px solid #E1EAF3;font-size:12px;color:#3F566B}
 .ai-attached-load{color:#8296A8;font-style:italic}
@@ -5044,6 +5070,43 @@ function projectCategory(p) {
   if (saved === "internal" || saved === "capital") return saved;
   return /\b(internal|maintenance|repair|facility|facilities|preventive)\b/i.test((p && p.title) || "") ? "internal" : "capital";
 }
+function PortfolioVisuals({
+  projects
+}) {
+  const h = React.createElement;
+  const rows = projects.map(p => ({
+    project: p,
+    stats: summarize(p)
+  }));
+  const totalBudget = rows.reduce((sum, row) => sum + row.stats.total, 0) || 1;
+  const maxExposure = Math.max(1, ...rows.map(row => Math.max(0, row.stats.carrying)));
+  const stopped = rows.filter(row => row.stats.stop).length;
+  const watching = rows.filter(row => !row.stats.stop && row.stats.watch).length;
+  const healthy = rows.length - stopped - watching;
+  const healthTotal = Math.max(1, rows.length);
+  const healthyEnd = healthy / healthTotal * 100;
+  const watchEnd = (healthy + watching) / healthTotal * 100;
+  const donut = `conic-gradient(#56C78A 0 ${healthyEnd}%, #F2A900 ${healthyEnd}% ${watchEnd}%, #FF6B61 ${watchEnd}% 100%)`;
+  const chartHead = (label, detail) => h("div", { className: "wall-chart-head" }, h("div", null, h("span", null, label), h("b", null, detail)));
+  const makeBars = (sortedRows, kind, value, width) => h("div", { className: "wall-bars" }, sortedRows.slice(0, 6).map(row => h("div", {
+    className: "wall-bar-row",
+    key: row.project.id
+  }, h("div", { className: "wall-bar-label" }, h("span", null, row.project.title), h("b", null, fmtMoney(value(row)))), h("div", { className: "wall-bar-track" }, h("div", {
+    className: "wall-bar-fill " + kind,
+    style: { width: `${width(row)}%` }
+  })))));
+  const healthLegend = [["good", healthy, "On track"], ["watch", watching, "Watch"], ["stop", stopped, "Hard stop"]].map(item => h("div", {
+    key: item[0]
+  }, h("i", { className: item[0] }), h("span", null, item[2]), h("b", null, item[1])));
+  const healthChart = h("section", { className: "wall-chart wall-health-chart" }, chartHead("Portfolio health", "Current project status"), h("div", {
+    className: "wall-health-body"
+  }, h("div", { className: "wall-donut", style: { background: donut } }, h("div", null, h("b", null, rows.length), h("span", null, "Projects"))), h("div", { className: "wall-legend" }, healthLegend)));
+  const budgetRows = rows.slice().sort((a, b) => b.stats.total - a.stats.total);
+  const budgetChart = h("section", { className: "wall-chart" }, chartHead("Budget allocation", fmtMoney(totalBudget) + " across the portfolio"), makeBars(budgetRows, "budget", row => row.stats.total, row => Math.max(2, row.stats.total / totalBudget * 100)));
+  const exposureRows = rows.slice().sort((a, b) => b.stats.carrying - a.stats.carrying);
+  const exposureChart = h("section", { className: "wall-chart" }, chartHead("Cash exposure", "Paid but not yet reimbursed"), makeBars(exposureRows, "exposure", row => Math.max(0, row.stats.carrying), row => row.stats.carrying > 0 ? Math.max(2, row.stats.carrying / maxExposure * 100) : 0));
+  return h("div", { className: "wall-visuals" }, healthChart, budgetChart, exposureChart);
+}
 function ProjectPicker({
   profile,
   onOpen,
@@ -5296,7 +5359,9 @@ function ProjectPicker({
     }, /*#__PURE__*/React.createElement("b", null, "$", (budget / 1e6).toFixed(1), "M"), /*#__PURE__*/React.createElement("i", null, "Total budget")), /*#__PURE__*/React.createElement("div", {
       className: "wall-stat wall-gold"
     }, /*#__PURE__*/React.createElement("b", null, "$", Math.round(carrying / 1000), "K"), /*#__PURE__*/React.createElement("i", null, "JMAA carrying")));
-  })(), projects && projects.length > 0 && /*#__PURE__*/React.createElement(MunisUpdateStatus, {
+  })(), display && projects && projects.length > 0 && /*#__PURE__*/React.createElement(PortfolioVisuals, {
+    projects: projects
+  }), projects && projects.length > 0 && /*#__PURE__*/React.createElement(MunisUpdateStatus, {
     portfolio: true
   }), projects && projects.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "cloud-empty"
