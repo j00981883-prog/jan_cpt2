@@ -3924,6 +3924,16 @@ main{max-width:1080px;margin:0 auto}
 .howto-btn.secondary{border:1px solid #CFDDE8;background:#fff;color:#597083}.howto-btn.primary{border:0;background:#F2A900;color:#0B3D6E;box-shadow:0 6px 16px rgba(202,139,0,.25)}
 .howto-btn:hover{transform:translateY(-1px)}
 .cloud-help-link{color:#F2C14F!important}.field-hdr-actions{margin-left:auto;display:flex;align-items:center;gap:8px}.field-help{color:#F6C34A!important}
+.field-coach-layer{position:fixed;inset:0;z-index:1500;pointer-events:none}.field-coach-shade{position:absolute;inset:0;background:rgba(4,20,37,.48);pointer-events:none;animation:fadeIn .2s ease}
+.field-coach-ring{position:fixed;z-index:1;border:3px solid #F2A900;border-radius:16px;pointer-events:none;
+  box-shadow:0 0 0 9999px rgba(4,20,37,.18),0 0 0 6px rgba(242,169,0,.2),0 0 28px rgba(242,169,0,.8);animation:coachPulse 1.45s ease-in-out infinite}
+.field-coach-card{position:fixed;z-index:2;width:min(360px,calc(100vw - 24px));padding:20px 20px 18px;border-radius:17px;background:#fff;
+  box-shadow:0 18px 55px rgba(0,15,30,.4);pointer-events:auto;animation:howtoRise .3s ease}
+.field-coach-close{position:absolute;right:10px;top:8px;width:32px;height:32px;border:0;border-radius:50%;background:#EEF4F9;color:#526B80;font-size:21px;cursor:pointer}
+.field-coach-count{padding-right:35px;color:#2E789F;font-size:10px;font-weight:800;letter-spacing:.12em}.field-coach-card h3{margin:5px 30px 7px 0;color:#0B3D6E;font:700 22px/1.1 var(--disp);text-transform:uppercase}
+.field-coach-card p{margin:0;color:#496074;font-size:14px;line-height:1.55}.field-coach-wait{display:flex;align-items:center;gap:8px;margin-top:14px;color:#8A6414;font-size:12px;font-weight:700}
+.field-coach-wait i{width:9px;height:9px;border-radius:50%;background:#F2A900;animation:fvPulse 1s ease-in-out infinite}.field-coach-next{margin-top:15px;width:100%;min-height:43px;border:0;border-radius:10px;background:#F2A900;color:#0B3D6E;font:700 13px var(--disp);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+@keyframes coachPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
 @keyframes howtoRise{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes howtoSpin{to{transform:rotate(360deg)}}
 @keyframes howtoBob{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-9px) rotate(1deg)}}
@@ -5239,6 +5249,53 @@ function HowToGuide({ mode, onClose, onStartProject }) {
         last && mode === "create" && onStartProject ? React.createElement("button", { className: "howto-btn primary", onClick: onStartProject }, "Create a project →") :
           React.createElement("button", { className: "howto-btn primary", onClick: last ? onClose : () => setStep(step + 1) }, last ? "Finish" : "Next →")))
   );
+}
+
+const FIELD_COACH_STEPS = [
+  { title: "Welcome to Field View", body: "I’ll walk with you through a complete field visit. You will use the real buttons, and I’ll move forward after each action.", target: null, button: "Start tour" },
+  { title: "Choose a project", body: "Tap any project below to open its field workspace.", target: ".field-proj-btn", wait: true },
+  { title: "Start the walkthrough", body: "Tap Start walkthrough. This records who is walking and the start time.", target: ".fv-start", wait: true },
+  { title: "Check an inspection item", body: "Inspect an item, then tap its checklist row. The progress bar will update when it saves.", target: ".field-check", wait: true },
+  { title: "Open field reports", body: "Tap Reports so you can record what you saw during this walkthrough.", target: ".field-tab:nth-child(2)", wait: true },
+  { title: "Create a report", body: "Tap + Log a field report.", target: ".field-new-report", wait: true },
+  { title: "Write and save the report", body: "Choose a category, type your note, add a photo if useful, then press Save report. I’ll continue after it saves.", target: ".field-sheet", wait: true },
+  { title: "Finish the walkthrough", body: "Your visit is ready. Tap Finish to record the completion time and checklist results.", target: ".fv-end", wait: true },
+  { title: "Walkthrough complete", body: "That’s the full field workflow. Office staff can now see who walked the project, what was checked, and every report or photo you added.", target: null, button: "Done" }
+];
+
+function FieldCoach({ step, setStep, close }) {
+  const s = FIELD_COACH_STEPS[step];
+  const [rect, setRect] = useState(null);
+  useEffect(() => {
+    let raf;
+    const measure = () => {
+      const el = s.target && document.querySelector(s.target);
+      if (!el) { setRect(null); return; }
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      if (r.bottom < 0 || r.top > window.innerHeight) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    measure();
+    const refresh = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure); };
+    window.addEventListener("scroll", refresh, true);
+    window.addEventListener("resize", refresh);
+    const timer = setInterval(measure, 450);
+    return () => { window.removeEventListener("scroll", refresh, true); window.removeEventListener("resize", refresh); clearInterval(timer); cancelAnimationFrame(raf); };
+  }, [step]);
+  if (!s) return null;
+  const cardStyle = rect ? {
+    top: (rect.bottom + 190 < window.innerHeight ? rect.bottom + 14 : Math.max(12, rect.top - 178)) + "px",
+    left: Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - 372)) + "px"
+  } : { top: "50%", left: "50%", transform: "translate(-50%,-50%)" };
+  return React.createElement("div", { className: "field-coach-layer" },
+    React.createElement("div", { className: "field-coach-shade" }),
+    rect && React.createElement("div", { className: "field-coach-ring", style: { top: rect.top - 7, left: rect.left - 7, width: rect.width + 14, height: rect.height + 14 } }),
+    React.createElement("aside", { className: "field-coach-card", style: cardStyle },
+      React.createElement("button", { className: "field-coach-close", onClick: close, "aria-label": "Exit walkthrough tutorial" }, "×"),
+      React.createElement("div", { className: "field-coach-count" }, "FIELD TOUR · ", step + 1, " / ", FIELD_COACH_STEPS.length),
+      React.createElement("h3", null, s.title), React.createElement("p", null, s.body),
+      s.wait && rect ? React.createElement("div", { className: "field-coach-wait" }, React.createElement("i"), "Waiting for you to do this…") :
+        React.createElement("button", { className: "field-coach-next", onClick: step === FIELD_COACH_STEPS.length - 1 ? close : () => setStep(step + 1) }, s.button || "Next")));
 }
 function PortfolioVisuals({
   projects
@@ -7809,9 +7866,9 @@ function FieldHome({
 }) {
   const [projects, setProjects] = useState(null);
   const [openId, setOpenId] = useState(null);
-  // Open the phone walkthrough immediately whenever Field View is entered.
-  // The header button remains available for replay after it is closed.
-  const [showTutorial, setShowTutorial] = useState(true);
+  // The live coach opens immediately and advances only when the user performs
+  // each real field action. The header button can replay it at any time.
+  const [tourStep, setTourStep] = useState(0);
   useEffect(() => {
     sb.from("projects").select("id,title").order("created_at").then(({
       data
@@ -7836,7 +7893,7 @@ function FieldHome({
     className: "field-hdr-actions"
   }, /*#__PURE__*/React.createElement("a", {
     className: "field-signout field-help",
-    onClick: () => setShowTutorial(true)
+    onClick: () => { setOpenId(null); setTourStep(0); }
   }, "Tutorial"), /*#__PURE__*/React.createElement("a", {
     className: "field-signout",
     onClick: onExit || onSignOut
@@ -7859,7 +7916,7 @@ function FieldHome({
   }, (projects || []).map(p => /*#__PURE__*/React.createElement("button", {
     key: p.id,
     className: "field-proj-btn",
-    onClick: () => setOpenId(p.id)
+    onClick: () => { setOpenId(p.id); if (tourStep === 1) setTourStep(2); }
   }, /*#__PURE__*/React.createElement("span", {
     className: "field-proj-icon",
     "aria-hidden": "true"
@@ -7876,10 +7933,13 @@ function FieldHome({
     project: openProj,
     projectId: openId,
     onBack: () => setOpenId(null),
-    profile: profile
-  }), showTutorial && /*#__PURE__*/React.createElement(HowToGuide, {
-    mode: "field",
-    onClose: () => setShowTutorial(false)
+    profile: profile,
+    tourStep: tourStep,
+    setTourStep: setTourStep
+  }), tourStep != null && /*#__PURE__*/React.createElement(FieldCoach, {
+    step: tourStep,
+    setStep: setTourStep,
+    close: () => setTourStep(null)
   }));
 }
 
@@ -7889,7 +7949,9 @@ function FieldProject({
   project,
   projectId,
   onBack,
-  profile
+  profile,
+  tourStep,
+  setTourStep
 }) {
   const [items, setItems] = useState(null);
   const [reports, setReports] = useState(null);
@@ -7919,6 +7981,11 @@ function FieldProject({
   useEffect(() => {
     load();
   }, [projectId]);
+  useEffect(() => {
+    // If the user returns to an unfinished visit, treat it as already started
+    // so the coach does not wait for a Start button that is no longer shown.
+    if (tourStep === 2 && visit) setTourStep(3);
+  }, [tourStep, visit]);
 
   async function startVisit() {
     const { data: sess } = await sb.auth.getSession();
@@ -7928,7 +7995,10 @@ function FieldProject({
       walker_id: uid,
       walker_name: (profile && profile.full_name) || "Field staff"
     }).select().single();
-    if (!error) setVisit(data);
+    if (!error) {
+      setVisit(data);
+      if (tourStep === 2) setTourStep(3);
+    }
   }
 
   async function endVisit() {
@@ -7937,13 +8007,16 @@ function FieldProject({
     const total = (items || []).length;
     const done = (items || []).filter(i => i.done).length;
     const notes = (reports || []).filter(r => r.visit_id === visit.id).length;
-    await sb.from("field_visits").update({
+    const { error } = await sb.from("field_visits").update({
       ended_at: new Date().toISOString(),
       items_total: total,
       items_done: done,
       note_count: notes
     }).eq("id", visit.id);
-    setVisit(null);
+    if (!error) {
+      setVisit(null);
+      if (tourStep === 7) setTourStep(8);
+    }
     setEnding(false);
     load();
   }
@@ -7975,6 +8048,7 @@ function FieldProject({
         visit_id: visit.id, item_id: item.id, label: item.label, done: next
       });
     }
+    if (tourStep === 3) setTourStep(4);
   }
   const doneCount = (items || []).filter(i => i.done).length;
   const pct = items && items.length ? doneCount / items.length * 100 : 0;
@@ -8019,7 +8093,7 @@ function FieldProject({
     "aria-hidden": "true"
   }, "✓"), "Checklist"), /*#__PURE__*/React.createElement("button", {
     className: "field-tab" + (tab === "reports" ? " on" : ""),
-    onClick: () => setTab("reports")
+    onClick: () => { setTab("reports"); if (tourStep === 4) setTourStep(5); }
   }, /*#__PURE__*/React.createElement("span", {
     className: "field-tab-icon",
     "aria-hidden": "true"
@@ -8049,7 +8123,7 @@ function FieldProject({
     className: "field-body"
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-new-report",
-    onClick: () => setComposing(true)
+    onClick: () => { setComposing(true); if (tourStep === 5) setTourStep(6); }
   }, "+  Log a field report"), reports === null && /*#__PURE__*/React.createElement("div", {
     className: "field-loading"
   }, "Loading…"), reports && reports.length === 0 && /*#__PURE__*/React.createElement("div", {
@@ -8078,6 +8152,7 @@ function FieldProject({
     onSaved: () => {
       setComposing(false);
       load();
+      if (tourStep === 6) setTourStep(7);
     }
   }));
 }
