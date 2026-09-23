@@ -7809,7 +7809,9 @@ function FieldHome({
 }) {
   const [projects, setProjects] = useState(null);
   const [openId, setOpenId] = useState(null);
-  const [showTutorial, setShowTutorial] = useState(false);
+  // Open the phone walkthrough immediately whenever Field View is entered.
+  // The header button remains available for replay after it is closed.
+  const [showTutorial, setShowTutorial] = useState(true);
   useEffect(() => {
     sb.from("projects").select("id,title").order("created_at").then(({
       data
