@@ -3924,7 +3924,7 @@ main{max-width:1080px;margin:0 auto}
 .howto-btn.secondary{border:1px solid #CFDDE8;background:#fff;color:#597083}.howto-btn.primary{border:0;background:#F2A900;color:#0B3D6E;box-shadow:0 6px 16px rgba(202,139,0,.25)}
 .howto-btn:hover{transform:translateY(-1px)}
 .cloud-help-link{color:#F2C14F!important}.field-hdr-actions{margin-left:auto;display:flex;align-items:center;gap:8px}.field-help{color:#F6C34A!important}
-.field-coach-layer{position:fixed;inset:0;z-index:1500;pointer-events:none}.field-coach-shade{position:absolute;inset:0;background:rgba(4,20,37,.48);pointer-events:none;animation:fadeIn .2s ease}
+.field-coach-layer{position:fixed;inset:0;z-index:1500;pointer-events:none}
 .field-coach-ring{position:fixed;z-index:1;border:3px solid #F2A900;border-radius:16px;pointer-events:none;
   box-shadow:0 0 0 9999px rgba(4,20,37,.18),0 0 0 6px rgba(242,169,0,.2),0 0 28px rgba(242,169,0,.8);animation:coachPulse 1.45s ease-in-out infinite}
 .field-coach-card{position:fixed;z-index:2;width:min(360px,calc(100vw - 24px));padding:20px 20px 18px;border-radius:17px;background:#fff;
@@ -3933,6 +3933,7 @@ main{max-width:1080px;margin:0 auto}
 .field-coach-count{padding-right:35px;color:#2E789F;font-size:10px;font-weight:800;letter-spacing:.12em}.field-coach-card h3{margin:5px 30px 7px 0;color:#0B3D6E;font:700 22px/1.1 var(--disp);text-transform:uppercase}
 .field-coach-card p{margin:0;color:#496074;font-size:14px;line-height:1.55}.field-coach-wait{display:flex;align-items:center;gap:8px;margin-top:14px;color:#8A6414;font-size:12px;font-weight:700}
 .field-coach-wait i{width:9px;height:9px;border-radius:50%;background:#F2A900;animation:fvPulse 1s ease-in-out infinite}.field-coach-next{margin-top:15px;width:100%;min-height:43px;border:0;border-radius:10px;background:#F2A900;color:#0B3D6E;font:700 13px var(--disp);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.field-coach-wait button{margin-left:auto;border:0;background:transparent;color:#0B5C88;font:700 11px var(--body);text-decoration:underline;cursor:pointer;padding:7px 2px}
 @keyframes coachPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
 @keyframes howtoRise{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes howtoSpin{to{transform:rotate(360deg)}}
@@ -5288,13 +5289,13 @@ function FieldCoach({ step, setStep, close }) {
     left: Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - 372)) + "px"
   } : { top: "50%", left: "50%", transform: "translate(-50%,-50%)" };
   return React.createElement("div", { className: "field-coach-layer" },
-    React.createElement("div", { className: "field-coach-shade" }),
     rect && React.createElement("div", { className: "field-coach-ring", style: { top: rect.top - 7, left: rect.left - 7, width: rect.width + 14, height: rect.height + 14 } }),
     React.createElement("aside", { className: "field-coach-card", style: cardStyle },
       React.createElement("button", { className: "field-coach-close", onClick: close, "aria-label": "Exit walkthrough tutorial" }, "×"),
       React.createElement("div", { className: "field-coach-count" }, "FIELD TOUR · ", step + 1, " / ", FIELD_COACH_STEPS.length),
       React.createElement("h3", null, s.title), React.createElement("p", null, s.body),
-      s.wait && rect ? React.createElement("div", { className: "field-coach-wait" }, React.createElement("i"), "Waiting for you to do this…") :
+      s.wait && rect ? React.createElement("div", { className: "field-coach-wait" }, React.createElement("i"), "Waiting for you to do this…",
+        React.createElement("button", { onClick: () => setStep(step + 1) }, "Skip this step")) :
         React.createElement("button", { className: "field-coach-next", onClick: step === FIELD_COACH_STEPS.length - 1 ? close : () => setStep(step + 1) }, s.button || "Next")));
 }
 function PortfolioVisuals({
@@ -7988,16 +7989,19 @@ function FieldProject({
   }, [tourStep, visit]);
 
   async function startVisit() {
-    const { data: sess } = await sb.auth.getSession();
-    const uid = sess && sess.session && sess.session.user.id;
-    const { data, error } = await sb.from("field_visits").insert({
-      project_id: projectId,
-      walker_id: uid,
-      walker_name: (profile && profile.full_name) || "Field staff"
-    }).select().single();
-    if (!error) {
+    try {
+      const { data: sess } = await requestWithTimeout(sb.auth.getSession(), "Starting walkthrough");
+      const uid = sess && sess.session && sess.session.user.id;
+      const { data, error } = await requestWithTimeout(sb.from("field_visits").insert({
+        project_id: projectId,
+        walker_id: uid,
+        walker_name: (profile && profile.full_name) || "Field staff"
+      }).select().single(), "Starting walkthrough");
+      if (error) throw error;
       setVisit(data);
       if (tourStep === 2) setTourStep(3);
+    } catch (error) {
+      alert("The walkthrough could not start: " + (error.message || error));
     }
   }
 
