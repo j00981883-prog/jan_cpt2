@@ -3894,6 +3894,42 @@ main{max-width:1080px;margin:0 auto}
 .dot-on{background:var(--gold);transform:scale(1.35)}
 .tut-actions{display:flex;justify-content:space-between;gap:10px}
 
+/* Animated how-to guides for project setup and the phone field workflow. */
+.howto-bg{position:fixed;inset:0;z-index:1400;display:grid;place-items:center;padding:18px;
+  background:rgba(5,24,45,.72);backdrop-filter:blur(7px);animation:fadeIn .2s ease}
+.howto-card{position:relative;width:min(580px,100%);max-height:92vh;overflow:auto;border-radius:24px;
+  background:#fff;box-shadow:0 28px 90px rgba(2,18,34,.45);animation:howtoRise .42s cubic-bezier(.2,.8,.2,1)}
+.howto-x{position:absolute;z-index:2;right:14px;top:13px;width:36px;height:36px;border:0;border-radius:50%;
+  background:rgba(255,255,255,.9);color:#0B3D6E;font-size:25px;line-height:1;cursor:pointer;box-shadow:0 3px 12px rgba(3,24,42,.18)}
+.howto-progress{display:flex;gap:5px;padding:17px 58px 11px 18px;background:#F7FAFD}
+.howto-progress i{height:5px;flex:1;border-radius:999px;background:#D8E5EF;transition:background .3s,transform .3s}
+.howto-progress i.on{background:linear-gradient(90deg,#2E9BD6,#F2A900);transform:scaleY(1.2)}
+.howto-stage{height:190px;position:relative;overflow:hidden;display:grid;place-items:center;
+  background:linear-gradient(145deg,#082D53,#0E5C93 62%,#2E9BD6);color:#fff}
+.howto-stage::before,.howto-stage::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.1)}
+.howto-stage::before{width:210px;height:210px;left:-65px;top:-90px;animation:howtoFloat 5s ease-in-out infinite}
+.howto-stage::after{width:150px;height:150px;right:-28px;bottom:-90px;animation:howtoFloat 6s ease-in-out -2s infinite}
+.howto-orbit{position:absolute;width:138px;height:138px;border:1px dashed rgba(255,255,255,.42);border-radius:50%;animation:howtoSpin 12s linear infinite}
+.howto-orbit::after{content:"";position:absolute;width:13px;height:13px;border-radius:50%;background:#F2A900;top:9px;left:16px;box-shadow:0 0 18px #F2A900}
+.howto-step-icon{position:absolute;left:22px;top:18px;width:38px;height:38px;display:grid;place-items:center;border-radius:50%;
+  background:#F2A900;color:#08355E;font:800 18px var(--disp);box-shadow:0 5px 15px rgba(0,0,0,.2)}
+.howto-glyph{position:relative;z-index:1;width:94px;height:94px;display:grid;place-items:center;border-radius:25px;
+  background:rgba(255,255,255,.96);color:#0B3D6E;font:800 25px var(--disp);letter-spacing:.04em;
+  box-shadow:0 15px 35px rgba(0,16,34,.3);animation:howtoBob 2.7s ease-in-out infinite}
+.howto-copy{padding:25px 27px 20px}.howto-eyebrow{color:#2E789F;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.howto-copy h2{margin:6px 0 9px;color:#0B3D6E;font:700 27px/1.08 var(--disp);text-transform:uppercase;letter-spacing:.025em}
+.howto-copy p{margin:0;color:#42576A;font-size:15px;line-height:1.65}
+.howto-actions{display:flex;justify-content:space-between;gap:11px;padding:0 27px 25px}
+.howto-btn{min-height:46px;padding:11px 18px;border-radius:11px;font:700 13px var(--disp);letter-spacing:.07em;text-transform:uppercase;cursor:pointer}
+.howto-btn.secondary{border:1px solid #CFDDE8;background:#fff;color:#597083}.howto-btn.primary{border:0;background:#F2A900;color:#0B3D6E;box-shadow:0 6px 16px rgba(202,139,0,.25)}
+.howto-btn:hover{transform:translateY(-1px)}
+.cloud-help-link{color:#F2C14F!important}.field-hdr-actions{margin-left:auto;display:flex;align-items:center;gap:8px}.field-help{color:#F6C34A!important}
+@keyframes howtoRise{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes howtoSpin{to{transform:rotate(360deg)}}
+@keyframes howtoBob{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-9px) rotate(1deg)}}
+@keyframes howtoFloat{0%,100%{transform:translate(0,0)}50%{transform:translate(13px,8px)}}
+@media(max-width:520px){.howto-bg{padding:0}.howto-card{width:100%;height:100%;max-height:none;border-radius:0;display:flex;flex-direction:column}.howto-stage{height:210px;flex:none}.howto-copy{padding:24px 20px 16px}.howto-copy h2{font-size:25px}.howto-actions{margin-top:auto;padding:12px 20px calc(22px + env(safe-area-inset-bottom))}.howto-btn{flex:1}.field-hdr-actions{gap:3px}.field-signout{font-size:12px;padding:8px 7px}}
+
 .field-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:3px;font-weight:600}
 .toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,0);background:var(--blue);color:#fff;font-family:var(--disp);font-size:15px;letter-spacing:.04em;padding:12px 22px;border-radius:999px;border:2px solid var(--gold);box-shadow:0 10px 30px rgba(11,35,58,.35);z-index:1000;animation:toastIn .3s ease both}
 
@@ -5153,6 +5189,57 @@ function projectCategory(p) {
   if (saved === "internal" || saved === "capital") return saved;
   return /\b(internal|maintenance|repair|facility|facilities|preventive)\b/i.test((p && p.title) || "") ? "internal" : "capital";
 }
+
+const HOWTO_GUIDES = {
+  create: {
+    eyebrow: "Project setup tutorial",
+    title: "Create a project from SharePoint",
+    steps: [
+      { icon: "1", title: "Download the SharePoint folder", body: "Open the project folder in SharePoint, choose Download, and let SharePoint create the ZIP file. Keep the ZIP intact — JAN CPT can read it without making you extract every file first.", visual: "sharepoint" },
+      { icon: "2", title: "Open New project", body: "Return to JAN CPT, make sure you are in the Capital section, then press + New project. Choose Capital project in the first field.", visual: "button" },
+      { icon: "3", title: "Choose the ZIP", body: "In Scan a project folder, select the SharePoint ZIP you downloaded. JAN CPT sorts the documents, reads the most useful files, and fills the project form for you.", visual: "zip" },
+      { icon: "4", title: "Review what was found", body: "Check the highlighted fields, especially the project name, contractor, engineer, dates, budget, project number, and AIP number. If documents disagree, JAN CPT marks the item for review.", visual: "review" },
+      { icon: "5", title: "Create and verify", body: "Leave Register these files in Documents checked, then press Create project. Open the new project and confirm its Dashboard and Documents tab before adding weekly updates.", visual: "done" }
+    ]
+  },
+  field: {
+    eyebrow: "Phone-first tutorial",
+    title: "Use Field View and walkthroughs",
+    steps: [
+      { icon: "1", title: "Enter Field View", body: "From All Projects, press Field view in the top-right corner. On a phone, this opens the simplified workspace with large controls made for use outdoors.", visual: "phone" },
+      { icon: "2", title: "Choose the project", body: "Tap the project you are inspecting. You will see its checklist, recent field reports, and walkthrough controls — without the budget and grant screens getting in the way.", visual: "project" },
+      { icon: "3", title: "Start the walkthrough", body: "Press Start walkthrough before you begin walking. JAN CPT records who performed it and when it started. If you leave the page, the unfinished walkthrough resumes when you return.", visual: "walk" },
+      { icon: "4", title: "Work through the checklist", body: "Tap each item as you inspect it. The progress bar updates immediately. If the airfield has no signal, JAN CPT warns you instead of silently losing the tap.", visual: "check" },
+      { icon: "5", title: "Add notes and photos", body: "Open Reports, press + Log a field report, choose a category, describe what you saw, and add a photo when useful. Reports made during a walkthrough stay connected to that visit.", visual: "camera" },
+      { icon: "6", title: "Finish the walkthrough", body: "Return to the top and press Finish. The dashboard saves the completion time, checklist count, and report count so office staff can see the latest field condition.", visual: "finish" }
+    ]
+  }
+};
+
+function HowToGuide({ mode, onClose, onStartProject }) {
+  const guide = HOWTO_GUIDES[mode] || HOWTO_GUIDES.create;
+  const [step, setStep] = useState(0);
+  const s = guide.steps[step];
+  const last = step === guide.steps.length - 1;
+  return React.createElement("div", { className: "howto-bg", onClick: onClose },
+    React.createElement("section", { className: "howto-card", onClick: e => e.stopPropagation(), role: "dialog", "aria-modal": "true", "aria-label": guide.title },
+      React.createElement("button", { className: "howto-x", onClick: onClose, "aria-label": "Close tutorial" }, "×"),
+      React.createElement("div", { className: "howto-progress" }, guide.steps.map((_, i) => React.createElement("i", { key: i, className: i <= step ? "on" : "" }))),
+      React.createElement("div", { className: "howto-stage howto-" + s.visual, key: mode + step },
+        React.createElement("div", { className: "howto-orbit" }),
+        React.createElement("div", { className: "howto-step-icon" }, s.icon),
+        React.createElement("div", { className: "howto-glyph", "aria-hidden": "true" },
+          s.visual === "sharepoint" ? "S" : s.visual === "zip" ? "ZIP" : s.visual === "phone" ? "▯" : s.visual === "walk" ? "➜" : s.visual === "check" ? "✓" : s.visual === "camera" ? "▣" : s.visual === "done" || s.visual === "finish" ? "✓" : "JAN")),
+      React.createElement("div", { className: "howto-copy" },
+        React.createElement("div", { className: "howto-eyebrow" }, guide.eyebrow, " · ", step + 1, " of ", guide.steps.length),
+        React.createElement("h2", null, s.title),
+        React.createElement("p", null, s.body)),
+      React.createElement("div", { className: "howto-actions" },
+        React.createElement("button", { className: "howto-btn secondary", onClick: step ? () => setStep(step - 1) : onClose }, step ? "← Back" : "Close"),
+        last && mode === "create" && onStartProject ? React.createElement("button", { className: "howto-btn primary", onClick: onStartProject }, "Create a project →") :
+          React.createElement("button", { className: "howto-btn primary", onClick: last ? onClose : () => setStep(step + 1) }, last ? "Finish" : "Next →")))
+  );
+}
 function PortfolioVisuals({
   projects
 }) {
@@ -5202,6 +5289,7 @@ function ProjectPicker({
 }) {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [howTo, setHowTo] = useState(null);
   const [showMunisDemo, setShowMunisDemo] = useState(false);
   const [projectTab, setProjectTab] = useState("all");
   const [clock, setClock] = useState("");
@@ -5382,6 +5470,9 @@ function ProjectPicker({
     className: "cloud-signout",
     onClick: () => setFieldView(true)
   }, "Field view"), /*#__PURE__*/React.createElement("a", {
+    className: "cloud-signout cloud-help-link",
+    onClick: () => setHowTo("create")
+  }, "Tutorials"), /*#__PURE__*/React.createElement("a", {
     className: "cloud-signout",
     onClick: onSignOut
   }, "Sign out")))), /*#__PURE__*/React.createElement("main", {
@@ -5545,6 +5636,10 @@ function ProjectPicker({
       setProjectTab(category || "all");
       bump();
     }
+  }), howTo && /*#__PURE__*/React.createElement(HowToGuide, {
+    mode: howTo,
+    onClose: () => setHowTo(null),
+    onStartProject: () => { setHowTo(null); setCreating(true); }
   }));
 }
 
@@ -7714,6 +7809,7 @@ function FieldHome({
 }) {
   const [projects, setProjects] = useState(null);
   const [openId, setOpenId] = useState(null);
+  const [showTutorial, setShowTutorial] = useState(false);
   useEffect(() => {
     sb.from("projects").select("id,title").order("created_at").then(({
       data
@@ -7734,10 +7830,15 @@ function FieldHome({
     className: "field-hdr-eyebrow"
   }, "JAN CPT · Field"), /*#__PURE__*/React.createElement("div", {
     className: "field-hdr-name"
-  }, profile.full_name)), /*#__PURE__*/React.createElement("a", {
+  }, profile.full_name)), /*#__PURE__*/React.createElement("div", {
+    className: "field-hdr-actions"
+  }, /*#__PURE__*/React.createElement("a", {
+    className: "field-signout field-help",
+    onClick: () => setShowTutorial(true)
+  }, "Tutorial"), /*#__PURE__*/React.createElement("a", {
     className: "field-signout",
     onClick: onExit || onSignOut
-  }, onExit ? "Exit" : "Sign out")), !openId && /*#__PURE__*/React.createElement("main", {
+  }, onExit ? "Exit" : "Sign out"))), !openId && /*#__PURE__*/React.createElement("main", {
     className: "field-main"
   }, /*#__PURE__*/React.createElement("div", {
     className: "field-welcome"
@@ -7774,6 +7875,9 @@ function FieldHome({
     projectId: openId,
     onBack: () => setOpenId(null),
     profile: profile
+  }), showTutorial && /*#__PURE__*/React.createElement(HowToGuide, {
+    mode: "field",
+    onClose: () => setShowTutorial(false)
   }));
 }
 
