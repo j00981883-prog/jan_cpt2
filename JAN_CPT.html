@@ -4750,6 +4750,9 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .field-progress-bar{background:#DCE8F0;box-shadow:inset 0 1px 2px rgba(7,26,51,.08)}
 .field-progress span{padding-left:2px;color:#0B3D6E}
 .field-check{border-radius:15px;padding:15px 16px;box-shadow:0 4px 14px rgba(11,61,110,.07)}
+.field-check-group{margin:0 0 18px}.field-check-group-title{display:flex;justify-content:space-between;align-items:center;
+  padding:4px 3px 9px;color:#0B3D6E;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.field-check-group-title span{padding:3px 8px;border-radius:999px;background:#E5EFF7;color:#587085;font-size:10px;letter-spacing:0}
 .field-new-report{background:linear-gradient(135deg,#F2A900,#F7C34F);box-shadow:0 8px 20px rgba(192,132,0,.22);
   transition:transform .12s,box-shadow .12s}
 .field-new-report:active{transform:scale(.985);box-shadow:0 3px 10px rgba(192,132,0,.2)}
@@ -4843,6 +4846,12 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .fs-err{background:#FBF0DC;border:1px solid #F0D9A8;color:#8A6414;border-radius:9px;padding:11px 13px;font-size:13px;margin-bottom:12px;line-height:1.5}
 .fs-empty{padding:20px;text-align:center;color:#8296A8;font-size:13.5px}
 .fs-list{margin-bottom:12px}
+.fs-templates{margin:14px 0 17px;padding:14px;border:1px solid #C9DEED;border-radius:12px;background:#F1F8FC}
+.fs-template-title{font-size:12px;font-weight:800;color:#0B3D6E;text-transform:uppercase;letter-spacing:.07em;margin-bottom:9px}
+.fs-template-actions{display:flex;gap:8px;flex-wrap:wrap}.fs-templates p{margin:8px 0 0;color:#6E8192;font-size:11.5px}
+.fs-group{margin:0 0 16px;border:1px solid #DEE8F0;border-radius:11px;overflow:hidden}.fs-group .fs-row{padding-left:12px;padding-right:12px}
+.fs-group-title{display:flex;justify-content:space-between;padding:9px 12px;background:#EAF3F9;color:#0B3D6E;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.fs-group-title span{color:#71879A}.fs-category-select{width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:13px var(--body)}
 .fs-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)}
 .fs-row:last-child{border-bottom:none}
 .fs-dot{flex:none;width:22px;height:22px;border-radius:6px;border:2px solid #C9D9E8;background:#fff;
@@ -7749,6 +7758,29 @@ function Assistant({
 //  Build the checklist that walkthrough and maintenance staff tap through on
 //  their phones, and read what they reported back.
 // ============================================================================
+const FIELD_CHECKLIST_TEMPLATES = {
+  "Existing Conditions": [
+    "Roof", "Walls", "Floors", "Base Trim", "Ceiling Grid", "Ceiling Tile",
+    "Interior Lighting", "HVAC", "Fire Protection", "IT / Data", "Power",
+    "Access Control", "Security Cameras", "Windows", "Furniture", "Entry",
+    "Civil", "Landscaping", "Exterior Lighting", "Parking Lot", "Parking Spaces",
+    "Restrooms", "Breakrooms", "Water Fountains", "Doors"
+  ],
+  "Renovations / Relocation": [
+    "Construction Schedule", "Furniture Delivery Schedule",
+    "Chief of Police — Security Camera Locations", "IT — Access Control",
+    "IT — Computers", "Box Existing Items", "Tag Boxes",
+    "IT — Bag Computers and Electronics", "Movers for Large Items"
+  ]
+};
+function groupedFieldItems(items) {
+  const groups = {};
+  (items || []).forEach(item => {
+    const category = item.category || "General";
+    (groups[category] = groups[category] || []).push(item);
+  });
+  return Object.entries(groups);
+}
 function FieldSetup({
   projectId,
   isEditor
@@ -7756,6 +7788,7 @@ function FieldSetup({
   const [items, setItems] = useState(null);
   const [reports, setReports] = useState(null);
   const [newItem, setNewItem] = useState("");
+  const [newCategory, setNewCategory] = useState("General");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   async function load() {
@@ -7793,7 +7826,7 @@ function FieldSetup({
     } = await sb.from("field_checklist").insert({
       project_id: projectId,
       label,
-      category: "General",
+      category: newCategory,
       sort_order: (items || []).length + 1
     });
     setBusy(false);
@@ -7803,6 +7836,32 @@ function FieldSetup({
     }
     setNewItem("");
     load();
+  }
+  async function applyTemplate(category) {
+    const labels = FIELD_CHECKLIST_TEMPLATES[category] || [];
+    const existing = new Set((items || []).map(i => String(i.label || "").trim().toLowerCase()));
+    const missing = labels.filter(label => !existing.has(label.toLowerCase()));
+    if (!missing.length) {
+      setErr(category + " is already on this checklist.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      const start = (items || []).length;
+      const { error } = await requestWithTimeout(sb.from("field_checklist").insert(missing.map((label, index) => ({
+        project_id: projectId,
+        label,
+        category,
+        sort_order: start + index + 1
+      }))), "Adding checklist template");
+      if (error) throw error;
+      await load();
+    } catch (error) {
+      setErr(error.message || "The checklist template could not be added.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function removeItem(id) {
     await sb.from("field_checklist").delete().eq("id", id);
@@ -7816,9 +7875,16 @@ function FieldSetup({
     className: "sub2"
   }, "These are the items walkthrough and maintenance staff see on their phones. They check them off in the field; you see the result here."), err && /*#__PURE__*/React.createElement("div", {
     className: "fs-err"
-  }, err), items && items.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, err), isEditor && !err && /*#__PURE__*/React.createElement("div", {
+    className: "fs-templates"
+  }, /*#__PURE__*/React.createElement("div", { className: "fs-template-title" }, "Add a checklist template"), /*#__PURE__*/React.createElement("div", { className: "fs-template-actions" }, Object.keys(FIELD_CHECKLIST_TEMPLATES).map(category => /*#__PURE__*/React.createElement("button", {
+    key: category,
+    className: "btn btn-ghost btn-xs",
+    disabled: busy,
+    onClick: () => applyTemplate(category)
+  }, "+ ", category))), /*#__PURE__*/React.createElement("p", null, "Only missing items are added, so applying a template twice will not create duplicates.")), items && items.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "fs-list"
-  }, items.map(it => /*#__PURE__*/React.createElement("div", {
+  }, groupedFieldItems(items).map(([category, group]) => /*#__PURE__*/React.createElement("div", { className: "fs-group", key: category }, /*#__PURE__*/React.createElement("div", { className: "fs-group-title" }, category, /*#__PURE__*/React.createElement("span", null, group.length)), group.map(it => /*#__PURE__*/React.createElement("div", {
     key: it.id,
     className: "fs-row"
   }, /*#__PURE__*/React.createElement("span", {
@@ -7828,7 +7894,7 @@ function FieldSetup({
   }, it.label), isEditor && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-xs",
     onClick: () => removeItem(it.id)
-  }, "Remove")))), items && items.length === 0 && !err && /*#__PURE__*/React.createElement("div", {
+  }, "Remove")))))), items && items.length === 0 && !err && /*#__PURE__*/React.createElement("div", {
     className: "fs-empty"
   }, "No checklist items yet."), isEditor && !err && /*#__PURE__*/React.createElement("div", {
     className: "fs-add"
@@ -7843,7 +7909,11 @@ function FieldSetup({
     className: "btn btn-primary btn-sm",
     disabled: busy || !newItem.trim(),
     onClick: addItem
-  }, "Add"))), /*#__PURE__*/React.createElement("section", {
+  }, "Add")), /*#__PURE__*/React.createElement("select", {
+    className: "fs-category-select",
+    value: newCategory,
+    onChange: e => setNewCategory(e.target.value)
+  }, ["General", ...Object.keys(FIELD_CHECKLIST_TEMPLATES)].map(category => /*#__PURE__*/React.createElement("option", { key: category, value: category }, category)))), /*#__PURE__*/React.createElement("section", {
     className: "panel rise",
     style: {
       animationDelay: "60ms"
@@ -8131,7 +8201,10 @@ function FieldProject({
     className: "field-loading"
   }, "Loading…"), items && items.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-empty"
-  }, "No checklist yet for this project."), (items || []).map(it => /*#__PURE__*/React.createElement("button", {
+  }, "No checklist yet for this project."), groupedFieldItems(items).map(([category, group]) => /*#__PURE__*/React.createElement("section", {
+    className: "field-check-group",
+    key: category
+  }, /*#__PURE__*/React.createElement("div", { className: "field-check-group-title" }, category, /*#__PURE__*/React.createElement("span", null, group.filter(i => i.done).length, " / ", group.length)), group.map(it => /*#__PURE__*/React.createElement("button", {
     key: it.id,
     className: "field-check" + (it.done ? " done" : ""),
     onClick: () => toggle(it)
@@ -8139,7 +8212,7 @@ function FieldProject({
     className: "field-check-box"
   }, it.done ? "✓" : ""), /*#__PURE__*/React.createElement("span", {
     className: "field-check-label"
-  }, it.label)))), tab === "reports" && /*#__PURE__*/React.createElement("div", {
+  }, it.label)))))), tab === "reports" && /*#__PURE__*/React.createElement("div", {
     className: "field-body"
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-new-report",
