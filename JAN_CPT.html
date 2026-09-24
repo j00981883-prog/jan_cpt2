@@ -1879,7 +1879,12 @@ function LastWalkthrough({ projectId }) {
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, `${visit.items_done}/${visit.items_total}`), React.createElement("i", null, "Checked")),
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, String(visit.note_count || 0)), React.createElement("i", null, "Notes")))),
     stale && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
-    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + n.category }, n.category), React.createElement("span", null, n.note, n.photo_path ? React.createElement(FieldPhoto, { path: n.photo_path, className: "lw-img" }) : null)))));
+    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => {
+      const checklistComment = checklistCommentData(n);
+      const category = checklistComment ? "Checklist" : n.category;
+      const copy = checklistComment ? checklistComment.item_label + ": " + checklistComment.comment : n.note;
+      return React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + category }, category), React.createElement("span", null, copy, n.photo_path ? React.createElement(FieldPhoto, { path: n.photo_path, className: "lw-img" }) : null));
+    })));
 }
 
 function MunisUpdateStatus({ projectId = null, portfolio = false }) {
@@ -4753,6 +4758,15 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .field-check-group{margin:0 0 18px}.field-check-group-title{display:flex;justify-content:space-between;align-items:center;
   padding:4px 3px 9px;color:#0B3D6E;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .field-check-group-title span{padding:3px 8px;border-radius:999px;background:#E5EFF7;color:#587085;font-size:10px;letter-spacing:0}
+.field-check-wrap{margin-bottom:12px}.field-check-wrap .field-check{margin-bottom:0}.field-check-comment{margin:0 7px;padding:9px 11px;
+  border:1px solid #CFE0EC;border-top:0;border-radius:0 0 10px 10px;background:#F1F7FB;color:#40576A;font-size:13px;line-height:1.45}
+.field-check-comment b{display:block;margin-bottom:2px;color:#0B3D6E;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.field-comment-add{margin:6px 8px 0;padding:6px 9px;border:0;background:transparent;color:#0B5C88;font:700 12px var(--body);cursor:pointer}
+.field-comment-editor{margin:8px 7px 0;padding:10px;border:1px solid #C9DDEB;border-radius:11px;background:#F5FAFD}
+.field-comment-editor textarea{width:100%;min-height:76px;padding:10px;border:1px solid #C9D9E8;border-radius:9px;resize:vertical;font:14px var(--body);color:#16232F;background:#fff}
+.field-comment-editor textarea:focus{outline:none;border-color:#2E9BD6;box-shadow:0 0 0 3px rgba(46,155,214,.14)}
+.field-comment-editor>div{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}.field-comment-editor button{padding:8px 11px;border:1px solid #CAD9E5;border-radius:8px;background:#fff;color:#5D7183;font-weight:700;cursor:pointer}
+.field-comment-editor button.save{border-color:#0B3D6E;background:#0B3D6E;color:#fff}.field-comment-editor button:disabled{opacity:.5}
 .field-new-report{background:linear-gradient(135deg,#F2A900,#F7C34F);box-shadow:0 8px 20px rgba(192,132,0,.22);
   transition:transform .12s,box-shadow .12s}
 .field-new-report:active{transform:scale(.985);box-shadow:0 3px 10px rgba(192,132,0,.2)}
@@ -7781,6 +7795,15 @@ function groupedFieldItems(items) {
   });
   return Object.entries(groups);
 }
+function checklistCommentData(report) {
+  if (!report || report.category !== "Checklist Comment") return null;
+  try {
+    const data = JSON.parse(report.note || "");
+    return data && data.item_id && data.comment ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
 function FieldSetup({
   projectId,
   isEditor,
@@ -8052,6 +8075,9 @@ function FieldProject({
   const [visit, setVisit] = useState(null);     // the open walkthrough, if any
   const [ending, setEnding] = useState(false);
   const [queued, setQueued] = useState(0);      // taps waiting on a signal
+  const [commentingId, setCommentingId] = useState(null);
+  const [commentText, setCommentText] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
 
   async function load() {
     try {
@@ -8145,8 +8171,39 @@ function FieldProject({
     }
     if (tourStep === 3) setTourStep(4);
   }
+  async function saveChecklistComment(item) {
+    const comment = commentText.trim();
+    if (!comment) return;
+    setCommentBusy(true);
+    try {
+      const { data: sess } = await requestWithTimeout(sb.auth.getSession(), "Saving comment");
+      const uid = sess && sess.session && sess.session.user.id;
+      const { error } = await requestWithTimeout(sb.from("field_reports").insert({
+        project_id: projectId,
+        category: "Checklist Comment",
+        note: JSON.stringify({ item_id: item.id, item_label: item.label, comment }),
+        reported_by: uid,
+        visit_id: visit ? visit.id : null,
+        photo_path: null
+      }), "Saving checklist comment");
+      if (error) throw error;
+      setCommentText("");
+      setCommentingId(null);
+      await load();
+    } catch (error) {
+      alert("The comment could not be saved: " + (error.message || error));
+    } finally {
+      setCommentBusy(false);
+    }
+  }
   const doneCount = (items || []).filter(i => i.done).length;
   const pct = items && items.length ? doneCount / items.length * 100 : 0;
+  const latestComments = {};
+  (reports || []).forEach(report => {
+    const data = checklistCommentData(report);
+    if (data && !latestComments[data.item_id]) latestComments[data.item_id] = { ...data, created_at: report.created_at };
+  });
+  const visibleReports = (reports || []).filter(report => report.category !== "Checklist Comment");
   return /*#__PURE__*/React.createElement("div", {
     className: "field-proj"
   }, /*#__PURE__*/React.createElement("div", {
@@ -8215,15 +8272,36 @@ function FieldProject({
   }, "No checklist yet for this project."), groupedFieldItems(items).map(([category, group]) => /*#__PURE__*/React.createElement("section", {
     className: "field-check-group",
     key: category
-  }, /*#__PURE__*/React.createElement("div", { className: "field-check-group-title" }, category, /*#__PURE__*/React.createElement("span", null, group.filter(i => i.done).length, " / ", group.length)), group.map(it => /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("div", { className: "field-check-group-title" }, category, /*#__PURE__*/React.createElement("span", null, group.filter(i => i.done).length, " / ", group.length)), group.map(it => /*#__PURE__*/React.createElement("div", {
     key: it.id,
+    className: "field-check-wrap"
+  }, /*#__PURE__*/React.createElement("button", {
     className: "field-check" + (it.done ? " done" : ""),
     onClick: () => toggle(it)
   }, /*#__PURE__*/React.createElement("span", {
     className: "field-check-box"
   }, it.done ? "✓" : ""), /*#__PURE__*/React.createElement("span", {
     className: "field-check-label"
-  }, it.label)))))), tab === "manage" && profile && profile.role === "editor" && /*#__PURE__*/React.createElement("div", {
+  }, it.label)), latestComments[it.id] && /*#__PURE__*/React.createElement("div", {
+    className: "field-check-comment"
+  }, /*#__PURE__*/React.createElement("b", null, "Comment"), latestComments[it.id].comment), commentingId === it.id ? /*#__PURE__*/React.createElement("div", {
+    className: "field-comment-editor"
+  }, /*#__PURE__*/React.createElement("textarea", {
+    value: commentText,
+    placeholder: "Add an observation about this item…",
+    onChange: e => setCommentText(e.target.value),
+    autoFocus: true
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => { setCommentingId(null); setCommentText(""); },
+    disabled: commentBusy
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "save",
+    onClick: () => saveChecklistComment(it),
+    disabled: commentBusy || !commentText.trim()
+  }, commentBusy ? "Saving…" : "Save comment"))) : /*#__PURE__*/React.createElement("button", {
+    className: "field-comment-add",
+    onClick: () => { setCommentingId(it.id); setCommentText(latestComments[it.id]?.comment || ""); }
+  }, latestComments[it.id] ? "Edit comment" : "+ Add comment")))))), tab === "manage" && profile && profile.role === "editor" && /*#__PURE__*/React.createElement("div", {
     className: "field-manage"
   }, /*#__PURE__*/React.createElement(FieldSetup, {
     projectId: projectId,
@@ -8237,9 +8315,9 @@ function FieldProject({
     onClick: () => { setComposing(true); if (tourStep === 5) setTourStep(6); }
   }, "+  Log a field report"), reports === null && /*#__PURE__*/React.createElement("div", {
     className: "field-loading"
-  }, "Loading…"), reports && reports.length === 0 && /*#__PURE__*/React.createElement("div", {
+  }, "Loading…"), reports && visibleReports.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-empty"
-  }, "No reports yet."), (reports || []).map(r => /*#__PURE__*/React.createElement("div", {
+  }, "No reports yet."), visibleReports.map(r => /*#__PURE__*/React.createElement("div", {
     key: r.id,
     className: "field-report fr-" + (r.category || "Other")
   }, /*#__PURE__*/React.createElement("div", {
