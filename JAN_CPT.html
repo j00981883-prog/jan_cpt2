@@ -7783,7 +7783,9 @@ function groupedFieldItems(items) {
 }
 function FieldSetup({
   projectId,
-  isEditor
+  isEditor,
+  checklistOnly = false,
+  onChanged
 }) {
   const [items, setItems] = useState(null);
   const [reports, setReports] = useState(null);
@@ -7835,7 +7837,8 @@ function FieldSetup({
       return;
     }
     setNewItem("");
-    load();
+    await load();
+    if (onChanged) onChanged();
   }
   async function applyTemplate(category) {
     const labels = FIELD_CHECKLIST_TEMPLATES[category] || [];
@@ -7857,6 +7860,7 @@ function FieldSetup({
       }))), "Adding checklist template");
       if (error) throw error;
       await load();
+      if (onChanged) onChanged();
     } catch (error) {
       setErr(error.message || "The checklist template could not be added.");
     } finally {
@@ -7865,7 +7869,8 @@ function FieldSetup({
   }
   async function removeItem(id) {
     await sb.from("field_checklist").delete().eq("id", id);
-    load();
+    await load();
+    if (onChanged) onChanged();
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
@@ -7913,7 +7918,7 @@ function FieldSetup({
     className: "fs-category-select",
     value: newCategory,
     onChange: e => setNewCategory(e.target.value)
-  }, ["General", ...Object.keys(FIELD_CHECKLIST_TEMPLATES)].map(category => /*#__PURE__*/React.createElement("option", { key: category, value: category }, category)))), /*#__PURE__*/React.createElement("section", {
+  }, ["General", ...Object.keys(FIELD_CHECKLIST_TEMPLATES)].map(category => /*#__PURE__*/React.createElement("option", { key: category, value: category }, category)))), !checklistOnly && /*#__PURE__*/React.createElement("section", {
     className: "panel rise",
     style: {
       animationDelay: "60ms"
@@ -8187,7 +8192,13 @@ function FieldProject({
   }, /*#__PURE__*/React.createElement("span", {
     className: "field-tab-icon",
     "aria-hidden": "true"
-  }, "▤"), "Reports")), tab === "checklist" && /*#__PURE__*/React.createElement("div", {
+  }, "▤"), "Reports"), profile && profile.role === "editor" && /*#__PURE__*/React.createElement("button", {
+    className: "field-tab" + (tab === "manage" ? " on" : ""),
+    onClick: () => setTab("manage")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "field-tab-icon",
+    "aria-hidden": "true"
+  }, "＋"), "Manage")), tab === "checklist" && /*#__PURE__*/React.createElement("div", {
     className: "field-body"
   }, items && items.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "field-progress"
@@ -8212,7 +8223,14 @@ function FieldProject({
     className: "field-check-box"
   }, it.done ? "✓" : ""), /*#__PURE__*/React.createElement("span", {
     className: "field-check-label"
-  }, it.label)))))), tab === "reports" && /*#__PURE__*/React.createElement("div", {
+  }, it.label)))))), tab === "manage" && profile && profile.role === "editor" && /*#__PURE__*/React.createElement("div", {
+    className: "field-manage"
+  }, /*#__PURE__*/React.createElement(FieldSetup, {
+    projectId: projectId,
+    isEditor: true,
+    checklistOnly: true,
+    onChanged: load
+  })), tab === "reports" && /*#__PURE__*/React.createElement("div", {
     className: "field-body"
   }, /*#__PURE__*/React.createElement("button", {
     className: "field-new-report",
