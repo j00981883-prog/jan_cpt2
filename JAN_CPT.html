@@ -4773,20 +4773,19 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .field-report{border-radius:15px;padding:16px;box-shadow:0 5px 16px rgba(11,61,110,.07)}
 @media(max-width:380px){.field-proj-icon{width:38px;height:38px}.field-proj-btn{gap:11px;padding-right:13px}}
 
-/* Phone navigation stays within thumb reach. The 950px cutoff includes large
-   phones in landscape; full desktop layouts keep the original top controls. */
+.field-bottom-nav{display:none}
+/* This is a separate root-level bar—not a fixed child of the sticky header—
+   because iPhone Safari can otherwise pin fixed controls to the header. */
 @media(max-width:950px){
   .field-app{padding-bottom:calc(82px + env(safe-area-inset-bottom))}
-  .field-exit,.field-back{position:fixed!important;bottom:calc(14px + env(safe-area-inset-bottom));z-index:1350;
-    display:flex!important;align-items:center;justify-content:center;min-height:50px;margin:0!important;
-    border-radius:15px;text-decoration:none;font-size:14px!important;font-weight:800!important;
-    box-shadow:0 10px 28px rgba(4,24,43,.28);cursor:pointer}
-  .field-exit{right:14px;min-width:94px;padding:0 19px!important;background:#0B3D6E!important;color:#fff!important;
-    border:2px solid rgba(255,255,255,.75)}
-  .field-back{left:14px;max-width:calc(100vw - 132px);padding:0 18px!important;background:#fff;color:#0B3D6E!important;
-    border:1px solid #C9D9E8}
-  .field-hdr .field-exit{font-size:0!important}
-  .field-hdr .field-exit::after{content:"Exit";font-size:14px}
+  .field-exit-top,.field-back-top{display:none!important}
+  .field-bottom-nav{position:fixed;left:0;right:0;bottom:0;z-index:1350;display:flex;justify-content:space-between;gap:10px;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:rgba(241,247,251,.96);
+    border-top:1px solid #C8D9E6;box-shadow:0 -8px 24px rgba(4,24,43,.16);backdrop-filter:blur(12px)}
+  .field-bottom-nav button{display:flex;align-items:center;justify-content:center;min-height:50px;padding:0 19px;border-radius:14px;
+    font:800 14px var(--body);cursor:pointer;box-shadow:0 5px 16px rgba(4,24,43,.15)}
+  .field-bottom-back{flex:1;border:1px solid #C9D9E8;background:#fff;color:#0B3D6E;text-align:left}
+  .field-bottom-exit{margin-left:auto;min-width:94px;border:2px solid rgba(255,255,255,.8);background:#0B3D6E;color:#fff}
 }
 
 /* Photos */
@@ -8010,7 +8009,7 @@ function FieldHome({
     className: "field-signout field-help",
     onClick: () => { setOpenId(null); setTourStep(0); }
   }, "Tutorial"), /*#__PURE__*/React.createElement("a", {
-    className: "field-signout field-exit",
+    className: "field-signout field-exit-top",
     onClick: onExit || onSignOut
   }, onExit ? "Exit" : "Sign out"))), !openId && /*#__PURE__*/React.createElement("main", {
     className: "field-main"
@@ -8055,7 +8054,16 @@ function FieldHome({
     step: tourStep,
     setStep: setTourStep,
     close: () => setTourStep(null)
-  }));
+  }), /*#__PURE__*/React.createElement("nav", {
+    className: "field-bottom-nav",
+    "aria-label": "Field navigation"
+  }, openId && /*#__PURE__*/React.createElement("button", {
+    className: "field-bottom-back",
+    onClick: () => setOpenId(null)
+  }, "← All projects"), /*#__PURE__*/React.createElement("button", {
+    className: "field-bottom-exit",
+    onClick: onExit || onSignOut
+  }, "Exit")));
 }
 
 // One project's field view: a checklist to tap through, and a short list of
@@ -8209,7 +8217,7 @@ function FieldProject({
   }, /*#__PURE__*/React.createElement("div", {
     className: "field-proj-hdr"
   }, /*#__PURE__*/React.createElement("a", {
-    className: "field-back",
+    className: "field-back field-back-top",
     onClick: onBack
   }, "‹ All projects"), /*#__PURE__*/React.createElement("div", {
     className: "field-proj-label"
