@@ -1728,7 +1728,10 @@ function Tracker({
     close: () => setLearn(null),
     goTab: t => t && setTab(t),
     tab: tab
-  }), toast && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "mobile-project-nav",
+    onClick: onBack
+  }, "← All Projects"), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast",
     key: toast.key
   }, toast.msg));
@@ -4773,7 +4776,7 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .field-report{border-radius:15px;padding:16px;box-shadow:0 5px 16px rgba(11,61,110,.07)}
 @media(max-width:380px){.field-proj-icon{width:38px;height:38px}.field-proj-btn{gap:11px;padding-right:13px}}
 
-.field-bottom-nav{display:none}
+.field-bottom-nav,.mobile-project-nav{display:none}
 /* This is a separate root-level bar—not a fixed child of the sticky header—
    because iPhone Safari can otherwise pin fixed controls to the header. */
 @media(max-width:950px){
@@ -4786,6 +4789,12 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
     font:800 14px var(--body);cursor:pointer;box-shadow:0 5px 16px rgba(4,24,43,.15)}
   .field-bottom-back{flex:1;border:1px solid #C9D9E8;background:#fff;color:#0B3D6E;text-align:left}
   .field-bottom-exit{margin-left:auto;min-width:94px;border:2px solid rgba(255,255,255,.8);background:#0B3D6E;color:#fff}
+  .app,.internal-app{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+  .btn-back,.internal-back{display:none!important}
+  .mobile-project-nav{position:fixed;left:14px;right:14px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:1350;
+    display:flex;align-items:center;justify-content:center;min-height:52px;padding:0 18px;border:1px solid #C9D9E8;
+    border-radius:15px;background:rgba(255,255,255,.97);color:#0B3D6E;font:800 14px var(--body);
+    box-shadow:0 8px 26px rgba(4,24,43,.25);backdrop-filter:blur(12px);cursor:pointer}
 }
 
 /* Photos */
@@ -8590,7 +8599,10 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
     className: "internal-overview"
   }, /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Project details"), /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("b", null, meta.location || "Not set")), showProjectNo && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Project number"), /*#__PURE__*/React.createElement("b", null, meta.projectNo || "Not set")), showEngineer && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Engineer"), /*#__PURE__*/React.createElement("b", null, meta.engineerOfRecord || "Not set"))), /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Notes"), notes ? /*#__PURE__*/React.createElement("p", { className: "internal-note-copy" }, notes) : /*#__PURE__*/React.createElement("p", { className: "internal-note-copy internal-empty" }, "No notes added yet."))), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : tab === "walkthroughs" ? /*#__PURE__*/React.createElement("div", { className: "internal-docs" }, /*#__PURE__*/React.createElement(LastWalkthrough, { projectId }), /*#__PURE__*/React.createElement(FieldSetup, { projectId, isEditor })) : /*#__PURE__*/React.createElement("div", {
     className: "internal-docs"
-  }, /*#__PURE__*/React.createElement(Documents, { projectId, isEditor, grant, setGrant, say: setMsg }))));
+  }, /*#__PURE__*/React.createElement(Documents, { projectId, isEditor, grant, setGrant, say: setMsg }))), /*#__PURE__*/React.createElement("button", {
+    className: "mobile-project-nav",
+    onClick: onBack
+  }, "← All Projects"));
 }
 
 function CloudApp() {
