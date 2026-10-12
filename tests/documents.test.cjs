@@ -12,7 +12,7 @@ function env(editor=true){
  let cursor=0,slots=[];
  const actions=[];
  const query={select(){return this;},eq(){return this;},in(){return this;},order(){return this;},single(){return this;},then(resolve){return Promise.resolve({data:rows,error:null}).then(resolve);},update(p){actions.push({type:'update',payload:p});return this;},insert(p){actions.push({type:'insert',payload:p});return this;}};
- const c={console,Date,Map,Set,crypto:require('node:crypto').webcrypto,window:{},confirm:()=>true,alert:()=>{},setTimeout:()=>{},requestWithTimeout:async p=>p,
+ const c={console,Date,Map,Set,SharePointFolder:()=>null,crypto:require('node:crypto').webcrypto,window:{},confirm:()=>true,alert:()=>{},setTimeout:()=>{},requestWithTimeout:async p=>p,
  useEffect:()=>{},useState:init=>{const i=cursor++;if(!(i in slots))slots[i]=init;return[slots[i],next=>{slots[i]=typeof next==='function'?next(slots[i]):next;}];},
  React:{createElement:(tag,props,...children)=>({tag,props:props||{},children}),useRef:()=>({current:null})},sb:{from:()=>query}};
  vm.createContext(c);vm.runInContext(src,c);

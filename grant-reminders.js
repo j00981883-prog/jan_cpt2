@@ -1,0 +1,65 @@
+function grantReminderPeriods(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit' }).formatToParts(now);
+  const part = key => parts.find(p=>p.type===key).value;
+  const daily = `${part('year')}-${part('month')}-${part('day')}`;
+  const monday = new Date(daily+'T12:00:00Z');
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  return {daily,weekly:monday.toISOString().slice(0,10)};
+}
+function GrantReminders({profile,projects,onOpen}) {
+  const [periods,setPeriods]=React.useState(()=>grantReminderPeriods());
+  const [done,setDone]=React.useState({});
+  const [loaded,setLoaded]=React.useState(false);
+  const [error,setError]=React.useState('');
+  const [busy,setBusy]=React.useState('');
+  const [selected,setSelected]=React.useState('');
+  const [note,setNote]=React.useState('');
+  React.useEffect(()=>{const timer=setInterval(()=>setPeriods(grantReminderPeriods()),60000);return()=>clearInterval(timer);},[]);
+  React.useEffect(()=>{
+    let live=true;setLoaded(false);setDone({});setError('');
+    requestWithTimeout(sb.from('grant_checkins').select('cadence,period_start,completed_at').eq('user_id',profile.id).in('period_start',[periods.daily,periods.weekly]),'Loading grant reminders')
+      .then(({data,error})=>{if(!live)return;if(error)throw error;const result={};(data||[]).forEach(r=>{if(r.period_start===periods[r.cadence])result[r.cadence]=r.completed_at;});setDone(result);setLoaded(true);})
+      .catch(e=>{if(live)setError(e.message||String(e));});
+    return()=>{live=false;};
+  },[profile.id,periods.daily,periods.weekly]);
+  async function complete(cadence){
+    if(busy||!loaded)return;setBusy(cadence);setError('');
+    try{
+      const {data,error}=await requestWithTimeout(sb.from('grant_checkins').upsert({user_id:profile.id,cadence,period_start:periods[cadence],completed_at:new Date().toISOString(),note:note.trim()},{onConflict:'user_id,cadence,period_start'}).select('completed_at').single(),'Saving grant check-in');
+      if(error)throw error;setDone(d=>({...d,[cadence]:data.completed_at}));setNote('');
+    }catch(e){setError(e.message||String(e));}finally{setBusy('');}
+  }
+  const enabled=[profile.grant_daily_reminder&&'daily',profile.grant_weekly_reminder&&'weekly'].filter(Boolean);
+  if(!enabled.length)return null;
+  const e=React.createElement;
+  const grantProjects=(projects||[]).filter(p=>p.meta?.projectCategory!=='internal');
+  return e('section',{className:'grant-reminders','aria-label':'Grant update reminders'},
+    e('div',{className:'grant-reminders-head'},e('div',null,e('span',{className:'grant-reminders-kicker'},profile.dashboard_designation||'Grants'),e('h2',null,'Your grant reminders')),e('span',{className:'doc-badge review'},loaded?enabled.filter(c=>!done[c]).length+' pending':'Loading…')),
+    e('div',{className:'grant-reminder-grid'},enabled.map(c=>e('div',{key:c,className:'grant-reminder-card'+(done[c]?' complete':'')},e('strong',null,c==='daily'?'Daily grant check-in':'Weekly grant updates'),e('p',null,c==='daily'?'Review grant dates, upcoming submissions and items needing attention.':'Update milestone completion dates, reports and grant status for active projects.'),e('small',null,c==='daily'?'Today · '+periods.daily:'Week beginning · '+periods.weekly),e('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!loaded||!!done[c],onClick:()=>complete(c)},done[c]?'✓ Completed':busy===c?'Saving…':'Mark check-in complete')))),
+    e('div',{className:'grant-reminder-actions'},e('select',{'aria-label':'Choose grant project',value:selected,onChange:event=>setSelected(event.target.value)},e('option',{value:''},'Choose a project to update…'),grantProjects.map(p=>e('option',{key:p.id,value:p.id},p.title||p.meta?.title))),e('button',{className:'btn btn-gold btn-sm',disabled:!selected,onClick:()=>onOpen(selected)},'Open project'),e('input',{value:note,onChange:event=>setNote(event.target.value),placeholder:'Optional check-in note','aria-label':'Check-in note'})),
+    e('p',{className:'docs-lf-hint'},'Daily reminders reset each day; weekly reminders reset Monday, using Central time. Check-in completion does not mark project milestones complete.'),error&&e('div',{className:'docs-err',role:'alert'},error));
+}
+
+function SharePointFolder({projectId,isEditor}) {
+  const [url,setUrl]=React.useState('');
+  const [saved,setSaved]=React.useState('');
+  const [busy,setBusy]=React.useState(false);
+  const [error,setError]=React.useState('');
+  React.useEffect(()=>{
+    let live=true;
+    requestWithTimeout(sb.from('projects').select('sharepoint_folder_url').eq('id',projectId).single(),'Loading SharePoint folder').then(({data,error})=>{if(!live)return;if(error)throw error;setUrl(data.sharepoint_folder_url||'');setSaved(data.sharepoint_folder_url||'');}).catch(e=>{if(live)setError(e.message||String(e));});
+    return()=>{live=false;};
+  },[projectId]);
+  async function save(){
+    if(!isEditor||busy)return;setError('');
+    let next=url.trim();
+    try{if(next){const link=new URL(next);if(link.protocol!=='https:'||!link.hostname.endsWith('.sharepoint.com')||link.username||link.password)throw Error('Enter a valid HTTPS SharePoint folder link.');next=link.href;}}catch(e){setError(e.message);return;}
+    setBusy(true);
+    try{const{error}=await requestWithTimeout(sb.from('projects').update({sharepoint_folder_url:next||null}).eq('id',projectId).select('id').single(),'Saving SharePoint folder');if(error)throw error;setSaved(next);setUrl(next);}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
+  }
+  const e=React.createElement;
+  return e('section',{className:'sharepoint-folder','aria-label':'SharePoint folder connection'},e('strong',null,'SharePoint project folder'),
+    saved&&e('a',{className:'btn btn-ghost btn-sm',href:saved,target:'_blank',rel:'noopener noreferrer'},'Open SharePoint folder'),
+    isEditor&&e('div',{className:'grant-reminder-actions'},e('input',{value:url,onChange:event=>setUrl(event.target.value),placeholder:'Paste this project’s SharePoint folder link','aria-label':'SharePoint folder URL',disabled:busy}),e('button',{className:'btn btn-primary btn-sm',onClick:save,disabled:busy},busy?'Saving…':'Save folder connection')),
+    e('p',{className:'docs-lf-hint'},'To import files, sync this folder through OneDrive, then choose Import synced folder below. A folder link alone does not automatically scan or sync SharePoint.'),error&&e('div',{className:'docs-err',role:'alert'},error));
+}

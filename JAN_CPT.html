@@ -58,6 +58,7 @@ window.addEventListener("error", function (e) {
 <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"
   onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./grant-reminders.js"></script>
 <script>
 const {
   useState,
@@ -4949,6 +4950,11 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .docs-name{font-weight:600;color:#16232F;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .docs-meta{font-size:12px;color:#7C8FA1;margin-top:2px}
 .docs-row .btn{flex:none}
+.grant-reminders{background:linear-gradient(120deg,#F0F7FC,#fff);border:1px solid #BED6E8;border-radius:18px;padding:22px;margin-bottom:22px;box-shadow:0 8px 25px rgba(11,61,110,.07)}
+.grant-reminders-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.grant-reminders-head h2{margin:5px 0;color:#0B3D6E;font-size:23px}.grant-reminders-kicker{font-size:11px;font-weight:800;letter-spacing:.08em;color:#50718B;text-transform:uppercase}
+.grant-reminder-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grant-reminder-card{padding:17px;border:1px solid #E8D18F;background:#FFFCF2;border-radius:12px;line-height:1.5}.grant-reminder-card.complete{background:#EFF9F3;border-color:#B9DEC7}.grant-reminder-card p{font-size:13px;color:#53697B;margin:8px 0}.grant-reminder-card small{display:block;margin-bottom:12px;color:#62788A}
+.grant-reminder-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px}.grant-reminder-actions input,.grant-reminder-actions select{padding:10px;border:1px solid #C9D9E8;border-radius:9px;background:#fff;font:inherit;min-width:0;flex:1}.sharepoint-folder{padding:15px;border:1px solid #C9D9E8;border-radius:12px;margin:16px 0;background:#F4F8FC}.sharepoint-folder>a{margin-left:12px}
+@media(max-width:650px){.grant-reminder-grid{grid-template-columns:1fr}.grant-reminders{padding:15px}.grant-reminder-actions select{flex-basis:100%}}
 .docs-filters{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
 .docs-filters input,.docs-filters select,.doc-control input,.doc-control select,.doc-control textarea{padding:10px 12px;border:1px solid #C9D9E8;border-radius:9px;font:inherit;min-width:0;background:#fff;color:#16232F}
 .docs-filters input{flex:1;min-width:180px}
@@ -5600,7 +5606,7 @@ function ProjectPicker({
     className: "cloud-user"
   }, profile?.full_name), /*#__PURE__*/React.createElement("span", {
     className: "cloud-role " + (isEditor ? "cloud-role-ed" : "")
-  }, isEditor ? "Editor" : "Viewer"), /*#__PURE__*/React.createElement("a", {
+  }, profile?.dashboard_designation || (isEditor ? "Editor" : "Viewer")), /*#__PURE__*/React.createElement("a", {
     className: "cloud-signout",
     onClick: () => setDisplay(true)
   }, "Display mode"), /*#__PURE__*/React.createElement("a", {
@@ -5614,7 +5620,7 @@ function ProjectPicker({
     onClick: onSignOut
   }, "Sign out")))), /*#__PURE__*/React.createElement("main", {
     className: "cloud-main"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, !display && (profile?.grant_daily_reminder || profile?.grant_weekly_reminder) && React.createElement(GrantReminders,{profile,projects,onOpen}), /*#__PURE__*/React.createElement("div", {
     className: "cloud-bar"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
     className: "cloud-h2"
@@ -7307,7 +7313,7 @@ function Documents({
   })), /*#__PURE__*/React.createElement("label", {
     className: "btn btn-ghost btn-sm docs-upload docs-folder",
     title: "Choose a folder and automatically add every file inside it"
-  }, busy ? "Scanning…" : "Add folder", /*#__PURE__*/React.createElement("input", {
+  }, busy ? "Scanning…" : "Import synced folder", /*#__PURE__*/React.createElement("input", {
     type: "file",
     multiple: true,
     webkitdirectory: "",
@@ -7331,7 +7337,7 @@ function Documents({
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => setLinkForm(!linkForm)
-  }, "Add link"))), React.createElement("div", { className: "docs-filters" },
+  }, "Add link"))), React.createElement(SharePointFolder,{projectId,isEditor}), React.createElement("div", { className: "docs-filters" },
     React.createElement("input", { value: search, "aria-label": "Search documents", placeholder: "Search names, filenames and revision notes…", onChange: e => setSearch(e.target.value) }),
     React.createElement("select", { value: categoryFilter, "aria-label": "Filter document category", onChange: e => setCategoryFilter(e.target.value) }, React.createElement("option", { value: "all" }, "All categories"), [...new Set([...CATEGORIES,...families.map(d => d.category || "General")])].map(c => React.createElement("option", { key:c,value:c },c))),
     React.createElement("select", { value: statusFilter, "aria-label": "Filter document status", onChange: e => setStatusFilter(e.target.value) }, React.createElement("option", { value: "all" }, "Active documents"), Object.entries(DOCUMENT_STATUSES).map(([id,label]) => React.createElement("option", { key:id,value:id },label))),
