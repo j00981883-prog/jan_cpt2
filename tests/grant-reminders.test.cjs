@@ -21,8 +21,11 @@ test('completed daily check-in stays completed while weekly check-in remains due
  const render=()=>{cursor=0;return c.GrantReminders({profile:{id:'joyce',grant_daily_reminder:true,grant_weekly_reminder:true},projects:[],onOpen:()=>{}});};
  render();effects.forEach(fn=>fn());await new Promise(resolve=>setImmediate(resolve));
  const all=n=>Array.isArray(n)?n.flatMap(all):n&&typeof n==='object'?[n,...n.children.flatMap(all)]:[];
- let nodes=all(render());assert.ok(nodes.find(n=>n.tag==='button'&&n.children[0]==='✓ Completed').props.disabled);
- await nodes.find(n=>n.tag==='button'&&n.children[0]==='Mark check-in complete').props.onClick();
+ let nodes=all(render());assert.ok(nodes.find(n=>n.tag==='span'&&n.children[0]==='✓ Completed'));
+ nodes.find(n=>n.tag==='textarea').props.onChange({target:{value:'Waiting on FAA review.'}});
+ nodes.find(n=>n.tag==='input'&&n.props.type==='checkbox').props.onChange({target:{checked:true}});
+ await all(render()).find(n=>n.tag==='button'&&n.children[0]==='Send check-in / memo').props.onClick();
  assert.equal(calls[0].user_id,'joyce');assert.equal(calls[0].cadence,'weekly');assert.equal(calls[0].period_start,periods.weekly);
- assert.equal(all(render()).filter(n=>n.tag==='button'&&n.children[0]==='✓ Completed').length,2);
+ assert.equal(calls[0].note,'Waiting on FAA review.');assert.equal(calls[0].no_updates,true);
+ assert.equal(all(render()).filter(n=>n.tag==='span'&&n.children[0]==='✓ Completed').length,2);
 });

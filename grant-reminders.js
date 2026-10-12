@@ -14,6 +14,8 @@ function GrantReminders({profile,projects,onOpen}) {
   const [busy,setBusy]=React.useState('');
   const [selected,setSelected]=React.useState('');
   const [note,setNote]=React.useState('');
+  const [noUpdates,setNoUpdates]=React.useState(false);
+  const [sent,setSent]=React.useState('');
   React.useEffect(()=>{const timer=setInterval(()=>setPeriods(grantReminderPeriods()),60000);return()=>clearInterval(timer);},[]);
   React.useEffect(()=>{
     let live=true;setLoaded(false);setDone({});setError('');
@@ -23,10 +25,10 @@ function GrantReminders({profile,projects,onOpen}) {
     return()=>{live=false;};
   },[profile.id,periods.daily,periods.weekly]);
   async function complete(cadence){
-    if(busy||!loaded)return;setBusy(cadence);setError('');
+    if(busy||!loaded)return;setBusy(cadence);setError('');setSent('');
     try{
-      const {data,error}=await requestWithTimeout(sb.from('grant_checkins').upsert({user_id:profile.id,cadence,period_start:periods[cadence],completed_at:new Date().toISOString(),note:note.trim()},{onConflict:'user_id,cadence,period_start'}).select('completed_at').single(),'Saving grant check-in');
-      if(error)throw error;setDone(d=>({...d,[cadence]:data.completed_at}));setNote('');
+      const {data,error}=await requestWithTimeout(sb.from('grant_checkins').upsert({user_id:profile.id,cadence,period_start:periods[cadence],completed_at:new Date().toISOString(),note:note.trim(),no_updates:noUpdates,project_id:selected||null},{onConflict:'user_id,cadence,period_start'}).select('completed_at').single(),'Saving grant check-in');
+      if(error)throw error;setDone(d=>({...d,[cadence]:data.completed_at}));setNote('');setNoUpdates(false);setSent('Check-in saved and delivered to your assigned grant-update recipient.');
     }catch(e){setError(e.message||String(e));}finally{setBusy('');}
   }
   const enabled=[profile.grant_daily_reminder&&'daily',profile.grant_weekly_reminder&&'weekly'].filter(Boolean);
@@ -35,9 +37,37 @@ function GrantReminders({profile,projects,onOpen}) {
   const grantProjects=(projects||[]).filter(p=>p.meta?.projectCategory!=='internal');
   return e('section',{className:'grant-reminders','aria-label':'Grant update reminders'},
     e('div',{className:'grant-reminders-head'},e('div',null,e('span',{className:'grant-reminders-kicker'},profile.dashboard_designation||'Grants'),e('h2',null,'Your grant reminders')),e('span',{className:'doc-badge review'},loaded?enabled.filter(c=>!done[c]).length+' pending':'Loading…')),
-    e('div',{className:'grant-reminder-grid'},enabled.map(c=>e('div',{key:c,className:'grant-reminder-card'+(done[c]?' complete':'')},e('strong',null,c==='daily'?'Daily grant check-in':'Weekly grant updates'),e('p',null,c==='daily'?'Review grant dates, upcoming submissions and items needing attention.':'Update milestone completion dates, reports and grant status for active projects.'),e('small',null,c==='daily'?'Today · '+periods.daily:'Week beginning · '+periods.weekly),e('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!loaded||!!done[c],onClick:()=>complete(c)},done[c]?'✓ Completed':busy===c?'Saving…':'Mark check-in complete')))),
-    e('div',{className:'grant-reminder-actions'},e('select',{'aria-label':'Choose grant project',value:selected,onChange:event=>setSelected(event.target.value)},e('option',{value:''},'Choose a project to update…'),grantProjects.map(p=>e('option',{key:p.id,value:p.id},p.title||p.meta?.title))),e('button',{className:'btn btn-gold btn-sm',disabled:!selected,onClick:()=>onOpen(selected)},'Open project'),e('input',{value:note,onChange:event=>setNote(event.target.value),placeholder:'Optional check-in note','aria-label':'Check-in note'})),
+    e('div',{className:'grant-reminder-grid'},enabled.map(c=>e('div',{key:c,className:'grant-reminder-card'+(done[c]?' complete':'')},e('strong',null,c==='daily'?'Daily grant check-in':'Weekly grant updates'),e('p',null,c==='daily'?'Review grant dates, upcoming submissions and items needing attention.':'Update milestone completion dates, reports and grant status for active projects.'),e('small',null,c==='daily'?'Today · '+periods.daily:'Week beginning · '+periods.weekly),done[c]&&e('span',{className:'doc-badge approved'},'✓ Completed'),e('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!loaded,onClick:()=>complete(c)},busy===c?'Saving…':done[c]?'Send another update':'Send check-in / memo')))),
+    e('div',{className:'grant-reminder-actions'},e('select',{'aria-label':'Choose grant project',value:selected,onChange:event=>setSelected(event.target.value)},e('option',{value:''},'All grants / general update'),grantProjects.map(p=>e('option',{key:p.id,value:p.id},p.title||p.meta?.title))),e('button',{className:'btn btn-gold btn-sm',disabled:!selected,onClick:()=>onOpen(selected)},'Open project')),
+    e('label',{className:'grant-memo-label'},'Memo to leadership',e('textarea',{value:note,onChange:event=>setNote(event.target.value),placeholder:'Type grant updates, upcoming dates, questions or items needing attention…',rows:4,maxLength:10000,disabled:!!busy,'aria-label':'Grant update memo'})),
+    e('label',{className:'grant-no-updates'},e('input',{type:'checkbox',checked:noUpdates,onChange:event=>setNoUpdates(event.target.checked),disabled:!!busy}),'There are no updates at this time.'),
+    sent&&e('p',{className:'doc-approved',role:'status'},sent),
     e('p',{className:'docs-lf-hint'},'Daily reminders reset each day; weekly reminders reset Monday, using Central time. Check-in completion does not mark project milestones complete.'),error&&e('div',{className:'docs-err',role:'alert'},error));
+}
+
+function GrantUpdateInbox({profile,onOpen}) {
+  const [items,setItems]=React.useState([]);
+  const [error,setError]=React.useState('');
+  const [busy,setBusy]=React.useState('');
+  React.useEffect(()=>{
+    let live=true;
+    async function load(){
+      try{const{data,error}=await requestWithTimeout(sb.from('grant_update_notifications').select('*').eq('recipient_id',profile.id).order('created_at',{ascending:false}).limit(30),'Loading grant update notices');if(error)throw error;if(live){setItems(data||[]);setError('');}}
+      catch(e){if(live)setError(e.message||String(e));}
+    }
+    load();const timer=setInterval(load,30000);return()=>{live=false;clearInterval(timer);};
+  },[profile.id]);
+  async function read(id){
+    if(busy)return;setBusy(id);
+    try{const time=new Date().toISOString();const{error}=await requestWithTimeout(sb.from('grant_update_notifications').update({read_at:time}).eq('id',id).eq('recipient_id',profile.id).select('id').single(),'Marking grant notice read');if(error)throw error;setItems(rows=>rows.map(r=>r.id===id?{...r,read_at:time}:r));}
+    catch(e){setError(e.message||String(e));}finally{setBusy('');}
+  }
+  const e=React.createElement;
+  return e('section',{className:'grant-reminders','aria-label':'Grant updates from staff'},e('div',{className:'grant-reminders-head'},e('h2',null,'Grant updates from staff'),e('span',{className:'doc-badge review'},items.filter(r=>!r.read_at).length,' unread')),
+    error&&e('div',{className:'docs-err',role:'alert'},error),!items.length&&e('p',null,'Grant updates and check-in memos will appear here when submitted.'),
+    items.map(r=>e('article',{key:r.id,className:'grant-notice'+(r.read_at?' read':'')},e('strong',null,r.sender_name,' · ',r.event_type==='no_updates'?'No updates at this time':r.event_type==='grant_change'?'Grant information updated':'Grant check-in'),
+      e('div',{className:'grant-notice-time'},new Date(r.created_at).toLocaleString('en-US',{timeZone:'America/Chicago'}),' CT',r.project_title?' · '+r.project_title:''),e('p',{className:'grant-notice-memo'},r.memo),
+      e('div',{className:'grant-reminder-actions'},r.project_id&&e('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpen(r.project_id)},'Open project'),!r.read_at&&e('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>read(r.id)},busy===r.id?'Saving…':'Mark read')))));
 }
 
 function SharePointFolder({projectId,isEditor}) {
