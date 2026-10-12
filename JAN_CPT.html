@@ -4949,6 +4949,24 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .docs-name{font-weight:600;color:#16232F;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .docs-meta{font-size:12px;color:#7C8FA1;margin-top:2px}
 .docs-row .btn{flex:none}
+.docs-filters{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.docs-filters input,.docs-filters select,.doc-control input,.doc-control select,.doc-control textarea{padding:10px 12px;border:1px solid #C9D9E8;border-radius:9px;font:inherit;min-width:0;background:#fff;color:#16232F}
+.docs-filters input{flex:1;min-width:180px}
+.doc-badge{display:inline-block;margin:5px 7px 3px 0;padding:4px 8px;border-radius:20px;background:#EDF2F7;font-size:11px;font-weight:800;color:#52677B}
+.doc-badge.approved{background:#E3F4E9;color:#236B45}.doc-badge.review{background:#FFF2D4;color:#936100}
+.doc-approved{font-size:12px;color:#236B45;margin-top:5px}
+.doc-control{padding:20px;background:#F3F7FB;border:1px solid #C9D9E8;border-radius:15px;margin:16px 0}
+.doc-control-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.doc-control-head h3{margin:0;color:#0B3D6E;font-size:19px}
+.doc-control-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.doc-control label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#3F566B}
+.doc-control .wide{grid-column:1/-1}
+.doc-control-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.doc-revision{border-top:1px solid #DCE6F0;margin-top:20px;padding-top:16px}
+.doc-version{padding:12px;background:#fff;border:1px solid #DCE6F0;border-radius:9px;margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.doc-version-copy{flex:1;min-width:170px;font-size:13px;overflow-wrap:anywhere}
+.doc-activity{padding:9px 0;border-bottom:1px solid #DCE6F0;font-size:12px;line-height:1.5;color:#52677B;overflow-wrap:anywhere}
+@media(max-width:650px){.docs-row{flex-wrap:wrap}.docs-main{flex-basis:calc(100% - 50px)}.doc-control-grid{grid-template-columns:1fr}.doc-control{padding:14px}.docs-filters select{flex:1}}
 @media(max-width:760px){.docs-lf-row{grid-template-columns:1fr}}
 `;
 
@@ -6864,6 +6882,31 @@ function NewProjectModal({
 //  AND adding links to files kept elsewhere (SharePoint, network drive, etc.).
 //  Editors can add/delete; everyone can view and download.
 // ============================================================================
+// DOCUMENT_CONTROLS_START
+const DOCUMENT_STATUSES = { draft: "Draft", review: "In review", approved: "Approved", superseded: "Superseded", archived: "Archived" };
+function documentFamilies(rows) {
+  const families = new Map();
+  (rows || []).forEach(d => {
+    const key = d.revision_parent_id || d.id;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(d);
+  });
+  return Array.from(families.values()).map(versions => {
+    versions.sort((a,b) => (b.revision_no || 1) - (a.revision_no || 1));
+    const latest = versions.find(d => d.review_status !== "archived") || versions[0];
+    return { ...latest, versions, approved: versions.find(d => d.review_status === "approved") || null };
+  });
+}
+function filterDocumentFamilies(rows, search, category, status) {
+  const needle = String(search || "").trim().toLowerCase();
+  return rows.filter(d => {
+    if (status !== "archived" && d.review_status === "archived") return false;
+    if (status !== "all" && (status === "approved" ? !d.approved : (d.review_status || "draft") !== status)) return false;
+    if (category !== "all" && (d.category || "General") !== category) return false;
+    return !needle || (d.versions || [d]).some(v => [v.label,v.file_name,v.category,v.revision_note].join(" ").toLowerCase().includes(needle));
+  });
+}
+// DOCUMENT_CONTROLS_END
 function Documents({
   projectId,
   isEditor,
@@ -6876,13 +6919,22 @@ function Documents({
   const [uploadStatus, setUploadStatus] = useState("");
   const [linkForm, setLinkForm] = useState(false);
   const [linking, setLinking] = useState(null); // registered doc awaiting a link
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [managing, setManaging] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const [controlError, setControlError] = useState("");
+  const [revisionFile, setRevisionFile] = useState(null);
+  const [revisionLink, setRevisionLink] = useState("");
+  const [revisionNote, setRevisionNote] = useState("");
   const [lf, setLf] = useState({
     label: "",
     url: "",
     category: "General"
   });
   const fileRef = React.useRef(null);
-  const CATEGORIES = ["Grant", "Contract", "Board Memo", "Change Order", "Estimates", "Pay Applications", "Correspondence", "Drawings", "Closeout", "General"];
+  const CATEGORIES = ["Grant", "Contract", "Board Memo", "Change Order", "Estimates", "Pay Applications", "Correspondence", "Drawings", "Photos", "Closeout", "General"];
   const [loadErr, setLoadErr] = useState("");
   async function load() {
     // Order by created_at when it exists; fall back so a missing column can
@@ -6907,8 +6959,56 @@ function Documents({
     setDocs(data || []);
   }
   useEffect(() => {
+    setManaging(null); setSearch(""); setControlError("");
     load();
   }, [projectId]);
+  async function manage(d) {
+    setManaging({ ...d }); setControlError(""); setRevisionFile(null); setRevisionLink(""); setRevisionNote(""); setActivity([]);
+    const ids = (d.versions || [d]).map(v => v.id);
+    try {
+      const { data, error } = await requestWithTimeout(sb.from("document_activity").select("*").eq("project_id", projectId).in("document_id", ids).order("created_at", { ascending: false }), "Loading document history");
+      if (error) throw error;
+      setActivity(data || []);
+    } catch(e) { setControlError(e.message || String(e)); }
+  }
+  async function saveControl() {
+    if (!managing || busy || !isEditor) return;
+    if (!String(managing.label || "").trim()) { setControlError("Enter a document name."); return; }
+    setBusy(true); setControlError("");
+    try {
+      const { error } = await requestWithTimeout(sb.from("documents").update({ label: managing.label.trim(), category: managing.category || "General", revision_note: managing.revision_note || "", review_status: managing.review_status || "draft" }).eq("id", managing.id).eq("project_id", projectId).select("id").single(), "Saving document controls");
+      if (error) throw error;
+      await load(); setManaging(null); say && say("Document controls saved");
+    } catch (e) { setControlError(e.message || String(e)); }
+    finally { setBusy(false); }
+  }
+  async function addRevision() {
+    if (!managing || busy || !isEditor) return;
+    if ((!revisionFile && !/^https?:\/\//i.test(revisionLink.trim())) || (revisionFile && revisionLink.trim())) { setControlError("Choose a file or enter one valid web link."); return; }
+    if (!revisionNote.trim()) { setControlError("Describe what changed in this revision."); return; }
+    setBusy(true); setControlError("");
+    let path = null;
+    try {
+      if (revisionFile) {
+        path = `${projectId}/revisions/${Date.now()}_${crypto.randomUUID()}_${revisionFile.name.replace(/[^\w.\-]+/g,"_")}`;
+        const { error } = await requestWithTimeout(sb.storage.from("project-docs").upload(path, revisionFile), "Uploading revision", 60000);
+        if (error) throw error;
+      }
+      const { error } = await requestWithTimeout(sb.from("documents").insert({
+        project_id: projectId, revision_parent_id: managing.revision_parent_id || managing.id,
+        label: managing.label, category: managing.category || "General", kind: revisionFile ? "file" : "link",
+        storage_path: path, file_name: revisionFile ? revisionFile.name : null,
+        size_bytes: revisionFile ? revisionFile.size : null, url: revisionFile ? "" : revisionLink.trim(),
+        revision_note: revisionNote.trim()
+      }).select("id").single(), "Registering document revision");
+      if (error) throw error;
+      await load(); setManaging(null); say && say("New draft revision saved. Previous versions remain available.");
+    } catch (e) {
+      // On timeouts the database outcome is uncertain: keep the uploaded file
+      // rather than risk deleting a revision that was successfully registered.
+      setControlError((e.message || String(e)) + ". Refresh the list before retrying.");
+    } finally { setBusy(false); }
+  }
   async function onUpload(files, sourceLabel = "files") {
     if (!files || !files.length) return;
     const selected = Array.from(files).filter(file => !/(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini)$/i.test(file.webkitRelativePath || file.name));
@@ -7109,7 +7209,8 @@ function Documents({
     load();
   }
   async function remove(d) {
-    if (!confirm(`Remove "${d.label}"?`)) return;
+    if (busy || !isEditor) return;
+    if (!confirm(`Archive "${d.label}" and its revisions? Files and history will remain available in the Archived filter.`)) return;
     if (d.legacy) {
       // lives in the Grant tab's link register
       setGrant(g => ({
@@ -7122,12 +7223,22 @@ function Documents({
       return;
     }
     setBusy(true);
-    if (d.kind === "file" && d.storage_path) {
-      await sb.storage.from("project-docs").remove([d.storage_path]);
-    }
-    await sb.from("documents").delete().eq("id", d.id);
-    setBusy(false);
-    load();
+    try {
+      const { error } = await requestWithTimeout(sb.from("documents").update({ review_status: "archived" }).eq("project_id", projectId).in("id", (d.versions || [d]).map(v => v.id)).select("id"), "Archiving documents");
+      if (error) throw error;
+      await load(); say && say("Document archived");
+    } catch(e) { alert(e.message || String(e)); }
+    finally { setBusy(false); }
+  }
+  async function restore(d) {
+    if (busy || !isEditor) return;
+    setBusy(true);
+    try {
+      const { error } = await requestWithTimeout(sb.from("documents").update({ review_status: "draft" }).eq("project_id", projectId).in("id", (d.versions || [d]).map(v => v.id)).eq("review_status", "archived").select("id"), "Restoring documents");
+      if (error) throw error;
+      await load(); say && say("Restored as draft for review");
+    } catch(e) { alert(e.message || String(e)); }
+    finally { setBusy(false); }
   }
   function legacyCategory(name) {
     const n = name.toLowerCase();
@@ -7143,10 +7254,10 @@ function Documents({
   }
   function guessCategory(name) {
     const n = name.toLowerCase();
-    if (n.includes("grant")) return "Grant";
-    if (n.includes("contract")) return "Contract";
-    if (n.includes("memo")) return "Board Memo";
-    if (n.includes("change") || n.includes("co")) return "Change Order";
+    if (/\.(jpe?g|png|gif|webp|heic|heif)$/i.test(n)) return "Photos";
+    const matched = legacyCategory(name);
+    if (matched !== "General") return matched;
+    if (/\bco[\s_\-]?\d+\b/.test(n)) return "Change Order";
     if (n.includes("draw") || n.includes("plan")) return "Drawings";
     return "General";
   }
@@ -7170,7 +7281,9 @@ function Documents({
 
   // group by category
   const groups = {};
-  [...(docs || []), ...legacy].forEach(d => (groups[d.category || "General"] = groups[d.category || "General"] || []).push(d));
+  const families = documentFamilies(docs);
+  const visible = filterDocumentFamilies([...families,...legacy],search,categoryFilter,statusFilter);
+  visible.forEach(d => (groups[d.category || "General"] = groups[d.category || "General"] || []).push(d));
   const orderedCats = CATEGORIES.filter(c => groups[c]).concat(Object.keys(groups).filter(c => !CATEGORIES.includes(c)));
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
@@ -7218,7 +7331,34 @@ function Documents({
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => setLinkForm(!linkForm)
-  }, "Add link"))), uploadStatus && /*#__PURE__*/React.createElement("div", {
+  }, "Add link"))), React.createElement("div", { className: "docs-filters" },
+    React.createElement("input", { value: search, "aria-label": "Search documents", placeholder: "Search names, filenames and revision notes…", onChange: e => setSearch(e.target.value) }),
+    React.createElement("select", { value: categoryFilter, "aria-label": "Filter document category", onChange: e => setCategoryFilter(e.target.value) }, React.createElement("option", { value: "all" }, "All categories"), [...new Set([...CATEGORIES,...families.map(d => d.category || "General")])].map(c => React.createElement("option", { key:c,value:c },c))),
+    React.createElement("select", { value: statusFilter, "aria-label": "Filter document status", onChange: e => setStatusFilter(e.target.value) }, React.createElement("option", { value: "all" }, "Active documents"), Object.entries(DOCUMENT_STATUSES).map(([id,label]) => React.createElement("option", { key:id,value:id },label))),
+    React.createElement("button", { className:"btn btn-ghost btn-sm", disabled:busy, onClick:load }, "Refresh")),
+    React.createElement("div", { className:"docs-lf-hint" }, visible.length, " document", visible.length === 1 ? "" : "s", " · Search covers names and revision notes. File contents are not indexed yet."),
+    managing && React.createElement("section", { className:"doc-control", "aria-label":"Document controls" },
+      React.createElement("div", { className:"doc-control-head" }, React.createElement("h3", null,"Document controls · Revision ",managing.revision_no || 1), React.createElement("button", { className:"btn btn-ghost btn-sm", disabled:busy, onClick:()=>setManaging(null) },"Close")),
+      React.createElement("div", { className:"doc-control-grid" },
+        React.createElement("label", null,"Document name",React.createElement("input", { value:managing.label,disabled:!isEditor||busy,onChange:e=>setManaging({...managing,label:e.target.value}) })),
+        React.createElement("label", null,"Category",React.createElement("select", { value:managing.category||"General",disabled:!isEditor||busy,onChange:e=>setManaging({...managing,category:e.target.value}) },[...new Set([...CATEGORIES,managing.category||"General"])].map(c=>React.createElement("option",{key:c,value:c},c)))),
+        React.createElement("label", null,"Review status",React.createElement("select", { value:managing.review_status||"draft",disabled:!isEditor||busy,onChange:e=>setManaging({...managing,review_status:e.target.value}) }, Object.entries(DOCUMENT_STATUSES).filter(([id])=>id!=="archived").map(([id,label])=>React.createElement("option",{key:id,value:id},label)))),
+        React.createElement("label", null,"Revision notes",React.createElement("input", { value:managing.revision_note||"",disabled:!isEditor||busy,onChange:e=>setManaging({...managing,revision_note:e.target.value}) }))),
+      React.createElement("p",{className:"docs-lf-hint"},"Approving a revision replaces the previous approved version. New revisions begin as Draft. Return approved documents to Draft to edit their details."),
+      isEditor && React.createElement("button",{className:"btn btn-primary btn-sm",disabled:busy,onClick:saveControl},busy?"Saving…":"Save controls"),
+      isEditor && managing.review_status!=="archived" && React.createElement("div",{className:"doc-revision"},React.createElement("h3",null,"Add a revision"),
+        React.createElement("div",{className:"doc-control-grid"},React.createElement("label",null,"Upload revised file",React.createElement("input",{type:"file",disabled:busy,onChange:e=>setRevisionFile(e.target.files[0]||null)})),
+          React.createElement("label",null,"Or enter a revised SharePoint / web link",React.createElement("input",{value:revisionLink,disabled:busy,placeholder:"https://…",onChange:e=>setRevisionLink(e.target.value)})),
+          React.createElement("label",{className:"wide"},"What changed?",React.createElement("textarea",{value:revisionNote,disabled:busy,rows:2,onChange:e=>setRevisionNote(e.target.value)}))),
+        React.createElement("div",{className:"doc-control-actions"},React.createElement("button",{className:"btn btn-gold btn-sm",disabled:busy,onClick:addRevision},busy?"Uploading…":"Save new revision"))),
+      controlError && React.createElement("div",{className:"docs-err",role:"alert"},controlError),
+      React.createElement("div",{className:"doc-revision"},React.createElement("h3",null,"Revision history"),(managing.versions||[managing]).map(v=>React.createElement("div",{className:"doc-version",key:v.id},
+        React.createElement("div",{className:"doc-version-copy"},React.createElement("strong",null,"Revision ",v.revision_no||1," · ",DOCUMENT_STATUSES[v.review_status||"draft"]),React.createElement("div",null,v.file_name||v.label),React.createElement("div",null,v.revision_note||"No revision note recorded"),React.createElement("div",null,v.created_at?new Date(v.created_at).toLocaleString():"Date not recorded")),
+        v.kind==="file"&&v.storage_path?React.createElement("button",{className:"btn btn-ghost btn-xs",onClick:()=>download(v)},"Open"):/^https?:\/\//i.test(v.url||"")?React.createElement("a",{className:"btn btn-ghost btn-xs",href:v.url,target:"_blank",rel:"noopener noreferrer"},"Open"):null,
+        isEditor && React.createElement("button",{className:"btn btn-ghost btn-xs",disabled:busy,onClick:()=>manage({...v,versions:managing.versions})},"Manage")))),
+      React.createElement("div",{className:"doc-revision"},React.createElement("h3",null,"Activity history"),activity.length?activity.map(a=>React.createElement("div",{className:"doc-activity",key:a.id},React.createElement("strong",null,a.actor_name||"Editor"," · ",a.action),React.createElement("div",null,a.detail),React.createElement("div",null,new Date(a.created_at).toLocaleString()))):React.createElement("p",{className:"docs-lf-hint"},"Activity is recorded from the document controls upgrade onward."))),
+    docs && !visible.length && React.createElement("div",{className:"docs-empty"},"No documents match these filters."),
+    uploadStatus && /*#__PURE__*/React.createElement("div", {
     className: "docs-upload-status"
   }, uploadStatus), isEditor && /*#__PURE__*/React.createElement("div", {
     className: "docs-drop",
@@ -7311,7 +7451,10 @@ function Documents({
     className: "docs-main"
   }, /*#__PURE__*/React.createElement("div", {
     className: "docs-name"
-  }, d.label), /*#__PURE__*/React.createElement("div", {
+  }, d.label), !d.legacy && React.createElement("div",null,
+    React.createElement("span",{className:"doc-badge "+(d.review_status||"draft")},DOCUMENT_STATUSES[d.review_status||"draft"]),
+    React.createElement("span",{className:"doc-badge"},"Latest revision ",d.revision_no||1),
+    d.approved && React.createElement("div",{className:"doc-approved"},"Current approved: revision ",d.approved.revision_no||1, d.approved.id!==d.id?" · A newer draft is available":"")), /*#__PURE__*/React.createElement("div", {
     className: "docs-meta"
   }, d.kind === "file" ? `File${d.size_bytes ? " · " + fmtSize(d.size_bytes) : ""}` : d.legacy ? "Link · from Grant & Compliance" : "Link")), d.kind === "file" ? /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-xs",
@@ -7340,10 +7483,11 @@ function Documents({
   }, "Add link")) : /*#__PURE__*/React.createElement("span", {
     className: "btn btn-ghost btn-xs btn-dead",
     title: "No link recorded for this document yet"
-  }, "No link"), isEditor && /*#__PURE__*/React.createElement("button", {
+  }, "No link"), !d.legacy && d.approved && d.approved.id!==d.id && (d.approved.kind==="file"?React.createElement("button",{className:"btn btn-primary btn-xs",onClick:()=>download(d.approved)},"Open approved"):React.createElement("a",{className:"btn btn-primary btn-xs",href:d.approved.url,target:"_blank",rel:"noopener noreferrer"},"Open approved")), !d.legacy && React.createElement("button",{className:"btn btn-ghost btn-xs",disabled:busy,onClick:()=>manage(d)},isEditor?"Controls / history":"History"), isEditor && !d.legacy && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-danger btn-xs",
-    onClick: () => remove(d)
-  }, "Remove")))))));
+    disabled:busy,
+    onClick: () => d.review_status==="archived"?restore(d):remove(d)
+  }, d.review_status==="archived"?"Restore":"Archive")))))));
 }
 
 // ============================================================================
