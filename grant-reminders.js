@@ -91,5 +91,40 @@ function SharePointFolder({projectId,isEditor}) {
   return e('section',{className:'sharepoint-folder','aria-label':'SharePoint folder connection'},e('strong',null,'SharePoint project folder'),
     saved&&e('a',{className:'btn btn-ghost btn-sm',href:saved,target:'_blank',rel:'noopener noreferrer'},'Open SharePoint folder'),
     isEditor&&e('div',{className:'grant-reminder-actions'},e('input',{value:url,onChange:event=>setUrl(event.target.value),placeholder:'Paste this project’s SharePoint folder link','aria-label':'SharePoint folder URL',disabled:busy}),e('button',{className:'btn btn-primary btn-sm',onClick:save,disabled:busy},busy?'Saving…':'Save folder connection')),
-    e('p',{className:'docs-lf-hint'},'To import files, sync this folder through OneDrive, then choose Import synced folder below. A folder link alone does not automatically scan or sync SharePoint.'),error&&e('div',{className:'docs-err',role:'alert'},error));
+    e('p',{className:'docs-lf-hint'},'Open the folder to work with the original files in SharePoint. Automatic deliveries appear below once the Microsoft flow is enabled. Import synced folder remains available for manual uploads.'),error&&e('div',{className:'docs-err',role:'alert'},error),
+    e(SharePointDocuments,{key:projectId,projectId,folderLinked:!!saved}));
+}
+
+function SharePointDocuments({projectId,folderLinked}) {
+  const e=React.createElement;
+  const [rows,setRows]=React.useState([]),[error,setError]=React.useState('');
+  const [loaded,setLoaded]=React.useState(false),[search,setSearch]=React.useState('');
+  const [limit,setLimit]=React.useState(100),[more,setMore]=React.useState(false);
+  React.useEffect(()=>{
+    let live=true,running=false;
+    async function refresh(){
+      if(running)return;running=true;
+      try{
+        const {data,error}=await requestWithTimeout(sb.from('sharepoint_documents').select('*').eq('project_id',projectId).order('received_at',{ascending:false}).order('source_id').range(0,limit),'Loading SharePoint documents');
+        if(error)throw error;
+        if(live){setRows((data||[]).slice(0,limit));setMore((data||[]).length>limit);setError('');setLoaded(true);}
+      }catch(err){if(live){setError(err.message||String(err));setLoaded(true);}}
+      finally{running=false;}
+    }
+    refresh();const timer=setInterval(refresh,30000);
+    return()=>{live=false;clearInterval(timer);};
+  },[projectId,limit]);
+  const visible=rows.filter(row=>row.file_name.toLowerCase().includes(search.toLowerCase()));
+  const fmt=value=>new Date(value).toLocaleString('en-US',{timeZone:'America/Chicago',dateStyle:'medium',timeStyle:'short'})+' CT';
+  return e('div',{className:'sp-files'},
+    e('div',{className:'sp-files-heading'},e('strong',null,'Files from SharePoint'),e('span',{className:'doc-badge'},rows.length?'Updates received':folderLinked?'Awaiting first delivery':'Folder not linked')),
+    rows.length>0&&e('p',{className:'docs-lf-hint'},'Last delivery: '+fmt(rows[0].received_at)+'. Files open with your Microsoft permissions.'),
+    error&&e('p',{className:'docs-err',role:'alert'},'Unable to check SharePoint deliveries: '+error),
+    !loaded?e('p',null,'Checking document updates…'):!rows.length&&!error&&e('p',{className:'docs-lf-hint'},folderLinked?'No automatic deliveries received yet. Your folder link works independently of automatic sync.':'Save the matching project folder above to prepare this project.'),
+    rows.length>0&&e('input',{className:'sp-file-search',type:'search',value:search,placeholder:'Find a SharePoint file…','aria-label':'Search delivered SharePoint files',onChange:ev=>setSearch(ev.target.value)}),
+    e('div',{className:'sp-file-list'},visible.map(row=>e('div',{className:'sp-file-row',key:row.source_id},
+      e('a',{href:row.url,target:'_blank',rel:'noopener noreferrer'},row.file_name),
+      e('small',null,'Modified '+fmt(row.modified_at)+(row.source_version?' · Version '+row.source_version:''))))),
+    rows.length>0&&!visible.length&&e('p',null,'No matching files in the loaded results.'),
+    more&&e('button',{className:'btn btn-ghost btn-sm',onClick:()=>setLimit(n=>n+100)},'Load more SharePoint files'));
 }
