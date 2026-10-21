@@ -12,9 +12,9 @@ No model subscription was changed. The existing claude-sonnet-5 default remains;
 
 ## Live verification status
 
-The first live request reached Anthropic but returned HTTP 401: the server's ANTHROPIC_API_KEY was rejected. The dashboard now reports this clearly instead of a generic non-2xx error. An administrator must replace that secret directly in Supabase before live answers or document analysis can be verified. Never place the key in the HTML, repository or chat.
+The first live request reached Anthropic but returned HTTP 401. A later live request succeeded after the user was directed to the server secret settings. The new document picker loaded actual uploaded files, and JAN AI reviewed Summary.pdf through the deployed endpoint, identifying its signing-certificate contents and noting the filename mismatch. Authentication, storage reading, provider response, and the displayed source list were exercised together. The dashboard also reports invalid server credentials clearly if that condition returns. Never place a key in the HTML, repository or chat.
 
-27 local tests pass, including saved-data evidence calculations, selected-document handling with mocked storage/provider, authentication and editor checks, missing-record failures, and existing edit proposal/document/reminder behavior. These tests do not replace a successful live AI response after the secret is corrected.
+27 local tests pass, including saved-data evidence calculations, selected-document handling with mocked storage/provider, authentication and editor checks, missing-record failures, and existing edit proposal/document/reminder behavior. The live selected-document review also succeeded.
 
 Relevant references:
 - https://supabase.com/docs/reference/javascript/auth-getuser
