@@ -1844,9 +1844,59 @@ function CalendarStrip({
 const WALK_WATCH_DAYS = 7;
 const WALK_STOP_DAYS = 14;
 
+function WalkthroughGallery({ projectId }) {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [page, setPage] = useState(0);
+  const [refresh, setRefresh] = useState(0);
+  const [more, setMore] = useState(false);
+  const rail = React.useRef(null);
+  useEffect(() => { setReports([]); setPage(0); }, [projectId]);
+  useEffect(() => {
+    let live = true;
+    setLoading(true); setError("");
+    (async () => {
+      try {
+        const { data, error } = await sb.from("field_reports").select("*").eq("project_id", projectId)
+          .order("created_at", { ascending: false }).order("id", { ascending: false }).range(page * 30, page * 30 + 29);
+        if (error) throw error;
+        if (live) {
+          setReports(old => page ? Array.from(new Map(old.concat(data || []).map(r => [r.id, r])).values()) : data || []);
+          setMore((data || []).length === 30);
+        }
+      } catch (_) { if (live) setError("Couldn't load field reports. Please try again."); }
+      finally { if (live) setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [projectId, page, refresh]);
+  const slide = direction => rail.current && rail.current.scrollBy({ left: direction * 300, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  return React.createElement("div", { className: "walk-gallery" },
+    React.createElement("div", { className: "walk-gallery-head" },
+      React.createElement("div", null, React.createElement("h3", null, "Reports & photos"), React.createElement("p", null, "Swipe or scroll through field updates · newest first")),
+      React.createElement("div", { className: "walk-gallery-controls" },
+        React.createElement("button", { type: "button", onClick: () => slide(-1), "aria-label": "Previous field reports" }, "←"),
+        React.createElement("button", { type: "button", onClick: () => slide(1), "aria-label": "Next field reports" }, "→"),
+        React.createElement("button", { type: "button", disabled: loading, onClick: () => { setPage(0); setRefresh(n => n + 1); } }, "Refresh"))),
+    error && React.createElement("p", { role: "alert" }, error),
+    loading && React.createElement("p", { role: "status" }, "Loading field updates…"),
+    !loading && !error && !reports.length && React.createElement("p", { className: "lw-none" }, "Photos and reports added in Field view will appear here."),
+    React.createElement("div", { ref: rail, className: "walk-gallery-rail", tabIndex: 0, role: "region", "aria-label": "Field walkthrough reports and photos" }, reports.map(r => {
+      const comment = checklistCommentData(r);
+      const copy = comment ? comment.item_label + ": " + comment.comment : r.note;
+      return React.createElement("article", { key: r.id, className: "walk-gallery-card" },
+        r.photo_path ? React.createElement(FieldPhoto, { path: r.photo_path, className: "walk-gallery-photo" }) : React.createElement("div", { className: "walk-gallery-placeholder", "aria-hidden": true }, "FIELD REPORT"),
+        React.createElement("div", { className: "walk-gallery-copy" },
+          React.createElement("span", { className: "walk-gallery-category" }, comment ? "Checklist comment" : r.category || "Field report"),
+          React.createElement("time", { dateTime: r.created_at }, new Date(r.created_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })),
+          React.createElement("details", null, React.createElement("summary", null, copy || "Photo update — click to view report"), React.createElement("p", null, copy || "No written notes attached.")),
+          React.createElement("small", null, r.photo_path ? "Tap photo to open full size" : r.visit_id ? "Walkthrough report" : "Field update")));
+    })),
+    more && React.createElement("button", { type: "button", className: "walk-gallery-more", disabled: loading, onClick: () => setPage(n => n + 1) }, "Load older reports"));
+}
+
 function LastWalkthrough({ projectId }) {
   const [visit, setVisit] = useState(undefined); // undefined = still loading
-  const [notes, setNotes] = useState([]);
 
   useEffect(() => {
     let live = true;
@@ -1856,10 +1906,6 @@ function LastWalkthrough({ projectId }) {
         const last = v && v[0] || null;
         if (!live) return;
         setVisit(last);
-        if (last) {
-          const { data: n } = await sb.from("field_reports").select("*").eq("visit_id", last.id).order("created_at", { ascending: false });
-          if (live) setNotes(n || []);
-        }
       } catch (e) {
         if (live) setVisit(null); // table not created yet — stay quiet
       }
@@ -1870,7 +1916,7 @@ function LastWalkthrough({ projectId }) {
   if (visit === undefined) return null;
 
   if (!visit) {
-    return React.createElement("section", { className: "panel rise" }, React.createElement("h2", null, "Field walkthroughs"), React.createElement("div", { className: "lw-none" }, "No completed walkthrough recorded yet. Field staff start one from the phone view; it appears here when they finish."));
+    return React.createElement("section", { className: "panel rise" }, React.createElement("h2", null, "Field walkthroughs"), React.createElement("div", { className: "lw-none" }, "No completed walkthrough recorded yet. Field staff start one from the phone view; it appears here when they finish."), React.createElement(WalkthroughGallery, { key: projectId, projectId }));
   }
 
   const started = new Date(visit.started_at);
@@ -1879,7 +1925,7 @@ function LastWalkthrough({ projectId }) {
   const stale = days >= WALK_STOP_DAYS ? "red" : days >= WALK_WATCH_DAYS ? "amber" : null;
 
   return React.createElement("section", { className: "panel rise" },
-    React.createElement("h2", null, "Last field walkthrough"),
+    React.createElement("h2", null, "Field walkthroughs"),
     React.createElement("div", { className: "lw-card" },
       React.createElement("div", { className: "lw-main" },
         React.createElement("div", { className: "lw-who" }, visit.walker_name || "Field staff"),
@@ -1888,12 +1934,7 @@ function LastWalkthrough({ projectId }) {
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, `${visit.items_done}/${visit.items_total}`), React.createElement("i", null, "Checked")),
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, String(visit.note_count || 0)), React.createElement("i", null, "Notes")))),
     stale && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
-    notes.length > 0 && React.createElement("div", { className: "lw-notes" }, notes.map(n => {
-      const checklistComment = checklistCommentData(n);
-      const category = checklistComment ? "Checklist" : n.category;
-      const copy = checklistComment ? checklistComment.item_label + ": " + checklistComment.comment : n.note;
-      return React.createElement("div", { key: n.id, className: "lw-note" }, React.createElement("span", { className: "lw-cat lw-cat-" + category }, category), React.createElement("span", null, copy, n.photo_path ? React.createElement(FieldPhoto, { path: n.photo_path, className: "lw-img" }) : null));
-    })));
+    React.createElement(WalkthroughGallery, { key: projectId, projectId }));
 }
 
 function MunisUpdateStatus({ projectId = null, portfolio = false }) {
@@ -4852,6 +4893,20 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 
 /* ===== LAST WALKTHROUGH CARD (dashboard) ===== */
 .lw-card{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.walk-gallery{margin-top:20px;border-top:1px solid #dce5ed;padding-top:18px;min-width:0}
+.walk-gallery-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.walk-gallery-head h3{margin:0;font-size:17px;color:#153e5d}.walk-gallery-head p{margin:5px 0 0;font-size:12px;color:#60788b}
+.walk-gallery-controls{display:flex;gap:6px}.walk-gallery-controls button,.walk-gallery-more{border:1px solid #c8d7e3;border-radius:9px;background:#f2f7fb;color:#153e5d;padding:8px 12px;cursor:pointer;min-height:40px}
+.walk-gallery-rail{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x proximity;padding:3px 2px 14px;max-width:100%;overscroll-behavior-x:contain}
+.walk-gallery-rail:focus-visible{outline:2px solid #167cab;outline-offset:3px}
+.walk-gallery-card{flex:0 0 260px;min-width:0;scroll-snap-align:start;background:#fff;border:1px solid #dbe5ed;border-radius:14px;overflow:hidden;box-shadow:0 3px 10px #153e5d09}
+.walk-gallery-card>a{display:block}.walk-gallery-photo,.walk-gallery-placeholder{width:100%;height:150px;object-fit:cover;display:block;background:#e9f1f7}
+.walk-gallery-placeholder{display:grid;place-items:center;background:linear-gradient(135deg,#123d5c,#216891);color:#d2e8f4;font-size:12px;letter-spacing:2px;font-weight:700}
+.walk-gallery-copy{padding:13px}.walk-gallery-category{display:block;color:#126a8c;font-size:12px;font-weight:700}.walk-gallery-copy time{display:block;color:#687f90;font-size:11px;margin:5px 0 10px}
+.walk-gallery-copy summary{cursor:pointer;font-size:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.walk-gallery-copy details[open] summary{-webkit-line-clamp:unset}.walk-gallery-copy details p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.5}.walk-gallery-copy details[open] p{display:none}
+.walk-gallery-copy small{display:block;margin-top:12px;color:#748b9c;font-size:11px}.walk-gallery-more{margin-top:10px}
+@media(max-width:600px){.walk-gallery-card{flex-basis:230px}.walk-gallery-photo,.walk-gallery-placeholder{height:140px}}
 .lw-main{flex:1;min-width:220px}
 .lw-who{font-size:15px;font-weight:700;color:var(--blue)}
 .lw-when{font-size:12.5px;color:var(--dim);margin-top:2px}
