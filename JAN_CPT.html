@@ -4346,7 +4346,8 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 @media(max-width:640px){.internal-head{padding:15px}.internal-wrap{padding:18px 12px}.internal-card{padding:18px}.internal-grid{grid-template-columns:1fr}.internal-field.wide{grid-column:auto}.internal-head-title{font-size:15px}}
 @media(max-width:640px){.internal-stats{grid-template-columns:1fr}.internal-overview{grid-template-columns:1fr}.internal-hero h1{font-size:24px}}
 
-/* ===== AI ASSISTANT (Beta 3) ===== */
+/* ===== AI ASSISTANT ===== */
+.ai-source-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:#F3F7FC;border-bottom:1px solid #DAE4EF}.ai-source-toolbar button{border:1px solid #B9CDDF;border-radius:8px;padding:7px 9px;color:#124C7B;background:#fff;cursor:pointer;font:inherit;font-size:12px}.ai-source-toolbar span{font-size:11px;color:#53677A}.ai-source-picker{padding:12px 14px;border-bottom:1px solid #DAE4EF;background:#fff}.ai-source-picker>input{box-sizing:border-box;width:100%;padding:9px;border:1px solid #C9D9E8;border-radius:8px;font:inherit}.ai-source-picker p{font-size:12px;color:#53677A;margin:8px 0}.ai-source-choices{max-height:180px;overflow:auto}.ai-source-choices button{display:flex;flex-direction:column;text-align:left;gap:4px;width:100%;padding:10px;border:0;border-bottom:1px solid #E3EBF2;background:#fff;color:#154773;cursor:pointer;overflow-wrap:anywhere}.ai-source-choices small{color:#53677A}.ai-source-choices button:disabled{opacity:.55;cursor:default}
 @keyframes aiFabIn{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
 @keyframes aiPanelIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes aiMsgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -7684,6 +7685,8 @@ function Assistant({
   const scroller = React.useRef(null);
   const [mode, setMode] = useState("ask");
   const [followUp, setFollowUp] = useState(null);
+  const [showSources, setShowSources] = useState(false);
+  const [answerSources, setAnswerSources] = useState([]);
   const requestLock = React.useRef(false);
   function propose(plan, bridge) {
     if (!isEditor || !bridge || window.JMAA_APPLY?.projectId !== bridge.projectId) throw new Error("Open the intended project before proposing changes.");
@@ -7740,7 +7743,7 @@ function Assistant({
     label: "Draft an update"
   }];
   const SUGGESTIONS = {
-    ask: ["Which projects are at risk right now?", "What's our total outstanding reimbursement?", "Which projects cross fiscal years?", "Summarize the portfolio in three sentences."],
+    ask: ["Prepare me for today's leadership meeting. Flag missing or conflicting information.", "Which budgets or funding figures need checking?", "What grant milestones need attention?", "What can you actually read from SharePoint right now?"],
     risk: ["Review every project and rank them by risk.", "What should I flag for the director this week?", "Which projects are trending toward a hard stop?"],
     memo: ["Draft a status update for leadership.", "Write talking points for a project meeting.", "Summarize what changed across the portfolio."]
   };
@@ -7805,10 +7808,16 @@ function Assistant({
             title: activeProject.projectTitle
           } : undefined,
           editorCapabilities: requestMode === "update" ? "add, change, clear or remove weekly entries, pay applications, milestones, project details, schedules, grant fields, funding sources and change orders; always return a reviewable changes array" : undefined,
-          document: attached || undefined
+          document: attached?.documentId ? undefined : attached || undefined,
+          documentId: attached?.documentId || undefined
         }
       }), "JAN AI response", 60000);
-      if (error) throw error;
+      if (error) {
+        let detail;
+        try { detail = await error.context?.json(); } catch {}
+        throw new Error(detail?.error || error.message || "JAN AI could not complete the request.");
+      }
+      if (Array.isArray(data?.sources)) setAnswerSources(data.sources);
       if (data && data.error) {
         setBusy(false);
         setMsgs(m => [...m, {
@@ -7866,8 +7875,8 @@ function Assistant({
     if (!file) return;
     setReading(true);
     try {
-      if (file.size > 4 * 1024 * 1024) {
-        throw new Error("That file is larger than 4 MB. Try a smaller one, or paste the relevant section.");
+      if (file.size > 3600000) {
+        throw new Error("That file is larger than 3.6 MB. Try a smaller one, or paste the relevant section.");
       }
       const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
       if (isPdf) {
@@ -7908,7 +7917,7 @@ function Assistant({
         text: ""
       });
       const tick = () => {
-        i += 2; // a word + its trailing space per frame
+        i += Math.max(2, Math.ceil(words.length / 90));
         const shown = words.slice(0, i).join("");
         setStreaming({
           text: shown
@@ -7946,11 +7955,15 @@ function Assistant({
     className: "ai-fab-star"
   }, "✦"), " JAN AI"), React.createElement("button", {
     className: "ai-reset", disabled: busy || reading,
-    onClick: () => { setMsgs([]); setPending(null); setFollowUp(null); setAttached(null); setQ(""); setMode("ask"); }
+    onClick: () => { setMsgs([]); setPending(null); setFollowUp(null); setAttached(null); setAnswerSources([]); setShowSources(false); setQ(""); setMode("ask"); }
   }, "New chat"), /*#__PURE__*/React.createElement("a", {
     className: "ai-close",
     onClick: () => setOpen(false)
-  }, "×")), React.createElement("div", { className: "ai-context" }, window.JMAA_APPLY ? "Editing context: " + window.JMAA_APPLY.projectTitle + " · Changes require your review" : "Portfolio questions · Open a capital project to edit its data"), /*#__PURE__*/React.createElement("div", {
+  }, "×")), React.createElement("div", { className: "ai-context" }, window.JMAA_APPLY ? "Project context: " + window.JMAA_APPLY.projectTitle + " · Changes require your review" : "Portfolio questions · Open a capital project to edit its data"),
+  React.createElement("div", {className:"ai-source-toolbar"},React.createElement("button",{type:"button",disabled:busy||reading,onClick:()=>setShowSources(v=>!v)},showSources?"Hide project files":"Read a project document"),
+    React.createElement("span",null,attached?.documentId?"Selected file contents will be read":"Project records + SharePoint metadata")),
+  showSources && React.createElement(AssistantDocumentPicker,{projectId:window.JMAA_APPLY?.projectId,onSelect:d=>{setAttached({name:d.file_name||d.label,documentId:d.id});setShowSources(false);},onError:message=>setMsgs(m=>[...m,{role:"err",text:message}])}),
+  /*#__PURE__*/React.createElement("div", {
     className: "ai-modes"
   }, MODES.filter(m => !m.editorOnly || isEditor).map(m => /*#__PURE__*/React.createElement("button", {
     key: m.id,
@@ -8085,7 +8098,30 @@ function Assistant({
     disabled: busy || !q.trim() && !attached
   }, "Send")), /*#__PURE__*/React.createElement("div", {
     className: "ai-foot"
-  }, "Answers are generated from live data and may need verifying."));
+  }, answerSources.length ? "Records supplied: " + answerSources.filter(s=>s.kind==='document contents').map(s=>s.name).concat(answerSources.filter(s=>s.kind==='project records').map(s=>s.name)).slice(0,7).join(" · ") : "Answers use saved project records. SharePoint file contents require an uploaded or attached document."));
+}
+
+function AssistantDocumentPicker({projectId,onSelect,onError}) {
+  const [files,setFiles]=React.useState(null),[query,setQuery]=React.useState('');
+  React.useEffect(()=>{
+    let live=true;
+    async function load(){
+      try{
+        let request=sb.from('documents').select('id,project_id,label,file_name,storage_path,size_bytes,review_status,revision_no').neq('review_status','archived').order('created_at',{ascending:false}).limit(300);
+        if(projectId)request=request.eq('project_id',projectId);
+        const {data,error}=await requestWithTimeout(request,'Loading AI document choices');if(error)throw error;
+        if(live)setFiles((data||[]).filter(d=>d.storage_path&&/\.(pdf|txt|md|csv|json)$/i.test(d.file_name||d.label||'')));
+      }catch(err){if(live){setFiles([]);onError(err.message||String(err));}}
+    }
+    load();return()=>{live=false;};
+  },[projectId]);
+  const e=React.createElement;
+  return e('div',{className:'ai-source-picker'},
+    e('input',{type:'search',value:query,onChange:event=>setQuery(event.target.value),placeholder:'Search uploaded project files','aria-label':'Search AI document choices'}),
+    e('p',null,'Choose a PDF or text file to review. For a SharePoint-only file, download it from SharePoint and attach it with ⊕. File contents are sent to the existing AI service when you press Send.'),
+    files===null?e('p',null,'Loading project files…'):!files.length?e('p',null,'No readable uploaded files in this selection. Attach a PDF or text file with ⊕.'):
+      e('div',{className:'ai-source-choices'},files.filter(d=>(d.label+' '+d.file_name).toLowerCase().includes(query.toLowerCase())).map(d=>e('button',{type:'button',key:d.id,disabled:Number(d.size_bytes)>3600000,onClick:()=>onSelect(d)},
+        e('strong',null,d.file_name||d.label),e('small',null,(d.review_status||'draft')+' · revision '+(d.revision_no||1)+(Number(d.size_bytes)>3600000?' · too large; attach an excerpt':''))))));
 }
 
 // ============================================================================
