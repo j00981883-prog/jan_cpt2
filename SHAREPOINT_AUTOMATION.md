@@ -20,7 +20,7 @@ Receiver: https://thbptghdspfweogjufun.supabase.co/functions/v1/sharepoint-sync
 
 - Five existing project folder URLs were saved: Apron Lighting (001-23), Badging Relocation (100 Cross Street), Threshold Lighting (005-25), RSA Improvements (008-23), and PBB Gate 4 (CP 004-24).
 - Runway Rehabilitation remains unmapped because its project number is N/A and the observed folder titles are ambiguous.
-- Trigger conditions restrict delivery to files in the five mapped folders. Adding another project requires updating the flow's folder condition as well as the project mapping.
+- Trigger conditions restrict delivery to the five original mapped folders plus the separate JAN CPT workspace. New JAN CPT project folders are matched using confirmed folder-request records; adding another legacy departmental folder still requires updating the watcher scope and mapping.
 - Only metadata and authenticated SharePoint links are delivered. No file content, source modifications, source deletion, or sharing-permission changes are part of this flow.
 - Files appear in Documents → Files from SharePoint. That list refreshes every 30 seconds while open and shows source modification and delivery timestamps in Central time.
 - The separate metadata index does not overwrite existing JAN CPT documents, approvals, uploads, budgets, or grant data.
@@ -38,7 +38,7 @@ Credential record b97ab8d4-0a44-4ed4-96ff-92afe4e6ac25 is enabled. To rotate, pr
 ## Remaining work
 
 1. Review any subsequent Microsoft delivery failures in run history. The initial 607-file index count is reconciled.
-2. Verify a future create/modify event through the separate automatic flow. Initial import receipt and dashboard display are verified, but a new source modification has not been made just to trigger a test.
+2. A real create event inside the confirmed Apron Lighting JAN CPT workspace was verified through the automatic flow, database index, and dashboard on October 21. Monitor subsequent connector errors in Microsoft run history.
 3. Verify repeat delivery remains unchanged in a real flow run; database duplicate/stale handling already passed rolled-back tests.
 4. Verify the remaining Runway Rehabilitation folder before assigning it.
 5. SharePoint file content extraction for AI remains separate work: this integration sends metadata and links only, not document contents.

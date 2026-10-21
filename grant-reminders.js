@@ -92,8 +92,40 @@ function SharePointFolder({projectId,isEditor}) {
     saved&&e('a',{className:'btn btn-ghost btn-sm',href:saved,target:'_blank',rel:'noopener noreferrer'},'Open SharePoint folder'),
     isEditor&&e('div',{className:'grant-reminder-actions'},e('input',{value:url,onChange:event=>setUrl(event.target.value),placeholder:'Paste this project’s SharePoint folder link','aria-label':'SharePoint folder URL',disabled:busy}),e('button',{className:'btn btn-primary btn-sm',onClick:save,disabled:busy},busy?'Saving…':'Save folder connection')),
     e('p',{className:'docs-lf-hint'},'Open the folder to work with the original files in SharePoint. Automatic deliveries appear below once the Microsoft flow is enabled. Import synced folder remains available for manual uploads.'),error&&e('div',{className:'docs-err',role:'alert'},error),
+    e(JanCptProjectFolder,{key:'folder-'+projectId,projectId,isEditor}),
     e(SharePointUploadStatus,{key:'uploads-'+projectId,projectId}),
     e(SharePointDocuments,{key:projectId,projectId,folderLinked:!!saved}));
+}
+
+function JanCptProjectFolder({projectId,isEditor}) {
+  const e=React.createElement;
+  const [folder,setFolder]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState('');
+  const [refresh,setRefresh]=React.useState(0),[loaded,setLoaded]=React.useState(false);
+  React.useEffect(()=>{
+    let live=true;
+    async function load(){
+      try{
+        const {data,error}=await requestWithTimeout(sb.from('sharepoint_project_folders').select('project_id,status,url,folder_path').eq('project_id',projectId).maybeSingle(),'Checking JAN CPT folder');
+        if(error)throw error;if(live){setFolder(data);setLoaded(true);setError('');}
+      }catch(_){if(live){setError('Unable to check the JAN CPT folder. Please try again.');setLoaded(true);}}
+    }
+    load();const timer=setInterval(load,15000);return()=>{live=false;clearInterval(timer);};
+  },[projectId,refresh]);
+  async function create(){
+    if(!isEditor||busy||folder)return;setBusy(true);setError('');
+    try{
+      const {error}=await requestWithTimeout(sb.from('sharepoint_project_folders').insert({project_id:projectId}),'Requesting project folder');
+      if(error&&error.code!=='23505')throw error;
+      setFolder({status:'queued'});setRefresh(n=>n+1);
+    }catch(_){setError('Folder request failed. Check your connection and try again.');}finally{setBusy(false);}
+  }
+  return e('div',{className:'sp-files','aria-label':'JAN CPT project folder'},e('strong',null,'JAN CPT project folder'),
+    e('p',{className:'docs-lf-hint'},'A separate workspace under SharePoint / Documents / JAN CPT. Files added there appear below as links. No automatic deletes or moves.'),
+    error&&e('p',{role:'alert'},error),
+    !loaded?e('p',null,'Checking folder…'):folder?.status==='ready'?e('a',{className:'btn btn-ghost btn-sm',href:folder.url,target:'_blank',rel:'noopener noreferrer'},'Open JAN CPT project folder'):
+    folder?e('p',{role:'status'},'Folder creation requested — waiting for Microsoft confirmation. This panel checks automatically.'):
+    isEditor&&e('button',{className:'btn btn-primary btn-sm',disabled:busy,onClick:create},busy?'Requesting…':'Create project folder in SharePoint'),
+    e('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRefresh(n=>n+1)},'Check folder status'));
 }
 
 function SharePointUploadStatus({projectId}) {

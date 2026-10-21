@@ -27,6 +27,8 @@ Deno.serve(async(req:Request)=>{
     const raw=new Uint8Array(length);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
     let input;try{input=JSON.parse(new TextDecoder().decode(raw));}catch{return reply({error:'Invalid JSON'},400);}
     const projects=await api('projects?select=id,sharepoint_folder_url&sharepoint_folder_url=not.is.null');
+    const folders=await api('sharepoint_project_folders?select=project_id,url&status=eq.ready&url=not.is.null');
+    projects.push(...folders.map((f:any)=>({id:f.project_id,sharepoint_folder_url:f.url})));
     let parsed;try{parsed=prepareDocument(input,projects);}catch(e){return reply({error:(e as Error).message},400);}
     if(!parsed.payload)return reply(parsed);
     return reply(await api('rpc/receive_sharepoint_document',{payload:parsed.payload}));

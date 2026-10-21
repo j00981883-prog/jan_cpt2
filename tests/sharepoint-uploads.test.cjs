@@ -8,3 +8,12 @@ test('outbound upload paths stay inside JAN CPT with unique names and project bo
  assert.ok(destination({...job,file_name:'report.pdf'}).folder.endsWith('/Files'));
  assert.equal(destination(job).file_name,d.file_name);
 });
+test('project folder names are stable, scoped and reused after project rename',async()=>{
+ const{projectFolder,folderUrl,destination}=await import('../supabase/functions/sharepoint-uploads/paths.mjs');
+ const job={id:'11111111-1111-4111-8111-111111111111',project_id:'22222222-2222-4222-8222-222222222222',project_title:'Apron Lighting',storage_path:'22222222-2222-4222-8222-222222222222/report.pdf',file_name:'report.pdf',category:'General'};
+ const folder=projectFolder(job);assert.equal(folder,'JAN CPT/Apron Lighting - 22222222');
+ assert.ok(folderUrl(folder).endsWith('JAN%20CPT/Apron%20Lighting%20-%2022222222'));
+ assert.equal(destination({...job,project_title:'Renamed'},folder).folder,folder+'/Files');
+ assert.throws(()=>destination(job,'Shared Documents/Other'));
+ assert.throws(()=>destination(job,'JAN CPT/Other - 33333333'));
+});
