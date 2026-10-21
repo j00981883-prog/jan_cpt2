@@ -59,6 +59,7 @@ window.addEventListener("error", function (e) {
   onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./grant-reminders.js?v=sharepoint-delivery-1"></script>
+<script src="./presentation-tour.js?v=1"></script>
 <script>
 const {
   useState,
@@ -859,9 +860,11 @@ function Tracker({
   initial,
   isEditor,
   onBack,
-  projectTitle
+  projectTitle,
+  presentationTab
 }) {
   const [tab, setTab] = useState("dashboard");
+  useEffect(()=>{if(['dashboard','log','pay','grant','contracts','docs','memo'].includes(presentationTab))setTab(presentationTab);},[presentationTab]);
   const [actuals, setActuals] = useState(initial.actuals || {});
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("");
@@ -4346,6 +4349,7 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 @media(max-width:640px){.internal-head{padding:15px}.internal-wrap{padding:18px 12px}.internal-card{padding:18px}.internal-grid{grid-template-columns:1fr}.internal-field.wide{grid-column:auto}.internal-head-title{font-size:15px}}
 @media(max-width:640px){.internal-stats{grid-template-columns:1fr}.internal-overview{grid-template-columns:1fr}.internal-hero h1{font-size:24px}}
 
+.presentation-launch{font:inherit;background:transparent;border:1px solid #ffffff70;border-radius:8px;padding:6px 10px;cursor:pointer}.presentation-tour{position:fixed;left:18px;bottom:18px;width:min(390px,calc(100vw - 36px));max-height:75vh;overflow:auto;z-index:12000;background:#fff;color:#173750;border:1px solid #B6CDE0;border-radius:18px;box-shadow:0 18px 60px #09243B50;font:14px/1.45 system-ui,sans-serif}.presentation-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:#0C3658;color:#fff;font-size:11px;letter-spacing:.6px}.presentation-head button{color:#fff;border:0;background:transparent;font-size:22px;cursor:pointer;padding:0 6px}.presentation-progress{height:4px;background:#E8EEF5}.presentation-progress span{display:block;height:100%;background:#EAAF19;transition:width .25s ease}.presentation-copy{padding:14px 18px;animation:presentation-in .2s ease}.presentation-copy h2{font:700 21px/1.2 system-ui,sans-serif;margin:6px 0 12px;color:#0C3658}.presentation-copy p{margin:6px 0 12px}.presentation-copy small{color:#62788B}.presentation-show{border-left:3px solid #198A9E;padding-left:10px}.presentation-note{padding:10px;border-radius:9px;background:#FFF5DB;font-size:12px}.presentation-note p{margin:4px 0 0}.presentation-copy label{display:block;margin:10px 0;font-size:12px;font-weight:600}.presentation-copy select{width:100%;padding:8px;border:1px solid #B6CDE0;border-radius:8px;background:#fff;color:#173750}.presentation-notes-toggle{border:0;background:transparent;color:#226892;font-size:12px;padding:6px 0;cursor:pointer}.presentation-tour nav{display:flex;gap:10px;justify-content:space-between;padding:12px 18px;border-top:1px solid #E2EAF1}.presentation-tour nav button{border:1px solid #B6CDE0;border-radius:9px;background:#fff;color:#173750;padding:9px 16px;font:600 13px system-ui;cursor:pointer}.presentation-tour nav button:last-child{background:#0C3658;color:#fff;border-color:#0C3658}.presentation-tour button:disabled{opacity:.4;cursor:default}.presentation-tour.is-collapsed{width:290px}@keyframes presentation-in{from{opacity:.2;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}@media(max-width:600px){.presentation-tour{left:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:calc(100vw - 20px);max-height:55vh}.presentation-copy{padding:10px 14px}.presentation-copy h2{font-size:18px}}@media(prefers-reduced-motion:reduce){.presentation-copy{animation:none}.presentation-progress span{transition:none}}
 /* ===== AI ASSISTANT ===== */
 .ai-source-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;background:#F3F7FC;border-bottom:1px solid #DAE4EF}.ai-source-toolbar button{border:1px solid #B9CDDF;border-radius:8px;padding:7px 9px;color:#124C7B;background:#fff;cursor:pointer;font:inherit;font-size:12px}.ai-source-toolbar span{font-size:11px;color:#53677A}.ai-source-picker{padding:12px 14px;border-bottom:1px solid #DAE4EF;background:#fff}.ai-source-picker>input{box-sizing:border-box;width:100%;padding:9px;border:1px solid #C9D9E8;border-radius:8px;font:inherit}.ai-source-picker p{font-size:12px;color:#53677A;margin:8px 0}.ai-source-choices{max-height:180px;overflow:auto}.ai-source-choices button{display:flex;flex-direction:column;text-align:left;gap:4px;width:100%;padding:10px;border:0;border-bottom:1px solid #E3EBF2;background:#fff;color:#154773;cursor:pointer;overflow-wrap:anywhere}.ai-source-choices small{color:#53677A}.ai-source-choices button:disabled{opacity:.55;cursor:default}
 @keyframes aiFabIn{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
@@ -5618,7 +5622,10 @@ function ProjectPicker({
   }, "Field view"), /*#__PURE__*/React.createElement("a", {
     className: "cloud-signout cloud-help-link",
     onClick: () => setHowTo("create")
-  }, "Tutorials"), /*#__PURE__*/React.createElement("a", {
+  }, "Tutorials"), React.createElement("button", {
+    type:"button",className:"cloud-signout presentation-launch",
+    onClick:()=>window.dispatchEvent(new CustomEvent('jan-presentation-start'))
+  }, "Presentation tour"), /*#__PURE__*/React.createElement("a", {
     className: "cloud-signout",
     href: "https://jmaait.sharepoint.com/sites/CapitalProgramming",
     target: "_blank",
@@ -7688,6 +7695,7 @@ function Assistant({
   const [showSources, setShowSources] = useState(false);
   const [answerSources, setAnswerSources] = useState([]);
   const requestLock = React.useRef(false);
+  useEffect(()=>{const listener=event=>setOpen(event.detail===true);window.addEventListener('jan-presentation-ai',listener);return()=>window.removeEventListener('jan-presentation-ai',listener);},[]);
   function propose(plan, bridge) {
     if (!isEditor || !bridge || window.JMAA_APPLY?.projectId !== bridge.projectId) throw new Error("Open the intended project before proposing changes.");
     for (const item of [plan, ...(Array.isArray(plan.changes) ? plan.changes : [])]) {
@@ -8334,13 +8342,14 @@ function FieldSetup({
 function FieldHome({
   profile,
   onSignOut,
-  onExit
+  onExit,
+  presentationMode=false
 }) {
   const [projects, setProjects] = useState(null);
   const [openId, setOpenId] = useState(null);
   // The live coach opens immediately and advances only when the user performs
   // each real field action. The header button can replay it at any time.
-  const [tourStep, setTourStep] = useState(0);
+  const [tourStep, setTourStep] = useState(presentationMode?null:0);
   useEffect(() => {
     sb.from("projects").select("id,title").order("created_at").then(({
       data
@@ -9025,6 +9034,21 @@ function CloudApp() {
   // what those staff see — which is what makes it demonstrable to leadership
   // without handing out a second login.
   const [fieldView, setFieldView] = useState(false);
+  const [presentationMode,setPresentationMode]=useState(false);
+  const [presentationTab,setPresentationTab]=useState(null);
+  const openRequest=React.useRef(0);
+  useEffect(()=>{
+    const navigate=event=>{
+      const d=event.detail||{};
+      setPresentationMode(d.active===true);
+      setFieldView(d.view==='field');setDisplay(d.view==='display');
+      setPresentationTab(d.tab||'dashboard');
+      if(d.view==='project'&&d.projectId){if(d.projectId!==openId)open(d.projectId);}
+      else{openRequest.current++;setOpenId(null);setOpenData(null);}
+    };
+    window.addEventListener('jan-presentation-nav',navigate);
+    return()=>window.removeEventListener('jan-presentation-nav',navigate);
+  },[openId]);
   const bump = () => setRefreshKey(k => k + 1);
 
   // Display mode auto-refreshes so a wall screen stays current without anyone
@@ -9076,9 +9100,11 @@ function CloudApp() {
     }));
   }, [session]);
   async function open(id) {
+    const request=++openRequest.current;
     setOpenData(null);
     setOpenId(id);
-    setOpenData(await loadProject(id));
+    const data=await loadProject(id);
+    if(request===openRequest.current)setOpenData(data);
   }
   if (!CONFIGURED) return /*#__PURE__*/React.createElement(NotConfigured, null);
   if (BOOT_ERROR) return /*#__PURE__*/React.createElement(BootError, {
@@ -9106,6 +9132,7 @@ function CloudApp() {
   if (profile.role === "field" || fieldView) {
     return /*#__PURE__*/React.createElement(FieldHome, {
       profile: profile,
+      presentationMode,
       // Only a previewing user gets a way back out; genuine field staff have
       // nowhere else to go, so an exit would just confuse them.
       onExit: profile.role === "field" ? null : () => setFieldView(false),
@@ -9126,6 +9153,7 @@ function CloudApp() {
     key: openId,
     projectId: openId,
     initial: openData,
+    presentationTab: presentationMode?presentationTab:null,
     isEditor: profile.role === "editor",
     onBack: () => {
       setOpenId(null);
@@ -9192,7 +9220,7 @@ function NotConfigured() {
   el.textContent = CSS;
   document.head.appendChild(el);
 })();
-ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(CloudApp, null));
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(React.Fragment,null,React.createElement(CloudApp,null),React.createElement(PresentationTour,null)));
 </script>
 </body>
 </html>
