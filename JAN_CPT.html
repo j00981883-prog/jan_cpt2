@@ -939,7 +939,7 @@ function Tracker({
     try {
       seen = !!localStorage.getItem(TUTORIAL_KEY);
     } catch (e) {}
-    if (!seen) setTutorial(0);
+    if (!seen && !presentationTab) setTutorial(0);
     setLoaded(true);
   }, []);
 
