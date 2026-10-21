@@ -1,8 +1,12 @@
 # SharePoint document delivery
 
-## Current status — October 19, 2026
+## Current status — October 21, 2026
 
-The receiving endpoint and Documents display are deployed. Automatic delivery is **not enabled**. Microsoft saved the flow but displayed: “Your flow was saved, but could not be enabled because of billing restrictions.” No trial, purchase, or license change was made. The receiving credential is disabled until this is resolved and end-to-end testing can proceed.
+The user obtained Power Automate Premium. Microsoft reported that the previous license suspension was resolved, and the automatic update flow was enabled (Status: On). The scoped receiving credential is enabled. No trial or purchase was started by the agent.
+
+A separate instant flow, `JAN CPT - Initial SharePoint file index` (`6e10d889-7abb-4cc9-8a1b-18ce25d7a522`), now reads existing files using Get files (properties only), pagination threshold 5000, nested items, and filters for the five mapped project folders. Its first run started October 21 at 10:48 AM Central and found 607 files. All 607 records were confirmed in the database later that morning. Real file metadata is visible under Documents → Files from SharePoint, including source version and modification dates.
+
+Initial run: https://make.gov.powerautomate.us/environments/Default-9788b7ae-68dd-475a-963f-aaaba469f043/flows/6e10d889-7abb-4cc9-8a1b-18ce25d7a522/runs/08584090091843471025040856384CU17
 
 Flow: JAN CPT - SharePoint document updates
 
@@ -29,15 +33,15 @@ The HTTP action uses x-jan-cpt-sharepoint-key. Its random 256-bit value lives in
 
 The edge function validates this credential itself; platform JWT validation is disabled for this webhook. The built-in service-role credential is used only inside the edge function. Browser users cannot read credentials, insert/update metadata, or execute the receiving RPC. Authenticated dashboard users can read indexed files for projects visible through existing project policies.
 
-Credential record b97ab8d4-0a44-4ed4-96ff-92afe4e6ac25 is currently disabled. Re-enable only when Microsoft delivery is ready for testing. To rotate, provision a new random key, store its hash, replace the flow header, then revoke the old record. Never put a service-role credential in Power Automate or JAN_CPT.html.
+Credential record b97ab8d4-0a44-4ed4-96ff-92afe4e6ac25 is enabled. To rotate, provision a new random key, store its hash, replace the flow header, then revoke the old record. Never put a service-role credential in Power Automate or JAN_CPT.html.
 
 ## Remaining work
 
-1. Have JMAA's Power Platform administrator resolve the exact billing restriction for the HTTP action/flow. Do not assume access to Power Automate includes this action's entitlement.
-2. Re-enable the scoped receiving credential and enable the flow without starting a trial or buying a license unless separately authorized.
-3. Run a real end-to-end test and verify source fields, folder filtering, successful receipt, dashboard display, and duplicate delivery behavior. No real file delivery has been verified yet.
-4. Build and run a one-time initial metadata import using Get files (properties only), with pagination and the same folder filters/authenticated receiver. Existing files have not yet been imported.
-5. Verify the remaining Runway Rehabilitation folder before assigning it.
+1. Review any subsequent Microsoft delivery failures in run history. The initial 607-file index count is reconciled.
+2. Verify a future create/modify event through the separate automatic flow. Initial import receipt and dashboard display are verified, but a new source modification has not been made just to trigger a test.
+3. Verify repeat delivery remains unchanged in a real flow run; database duplicate/stale handling already passed rolled-back tests.
+4. Verify the remaining Runway Rehabilitation folder before assigning it.
+5. SharePoint file content extraction for AI remains separate work: this integration sends metadata and links only, not document contents.
 
 ## Verification completed
 

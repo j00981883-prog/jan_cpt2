@@ -92,7 +92,29 @@ function SharePointFolder({projectId,isEditor}) {
     saved&&e('a',{className:'btn btn-ghost btn-sm',href:saved,target:'_blank',rel:'noopener noreferrer'},'Open SharePoint folder'),
     isEditor&&e('div',{className:'grant-reminder-actions'},e('input',{value:url,onChange:event=>setUrl(event.target.value),placeholder:'Paste this project’s SharePoint folder link','aria-label':'SharePoint folder URL',disabled:busy}),e('button',{className:'btn btn-primary btn-sm',onClick:save,disabled:busy},busy?'Saving…':'Save folder connection')),
     e('p',{className:'docs-lf-hint'},'Open the folder to work with the original files in SharePoint. Automatic deliveries appear below once the Microsoft flow is enabled. Import synced folder remains available for manual uploads.'),error&&e('div',{className:'docs-err',role:'alert'},error),
+    e(SharePointUploadStatus,{key:'uploads-'+projectId,projectId}),
     e(SharePointDocuments,{key:projectId,projectId,folderLinked:!!saved}));
+}
+
+function SharePointUploadStatus({projectId}) {
+  const e=React.createElement;
+  const [rows,setRows]=React.useState([]),[error,setError]=React.useState('');
+  React.useEffect(()=>{
+    let live=true;
+    async function load(){
+      try{
+        const {data,error}=await requestWithTimeout(sb.from('sharepoint_uploads').select('id,file_name,status,destination_url,created_at,delivered_at,error_message').eq('project_id',projectId).order('created_at',{ascending:false}).limit(20),'Checking SharePoint uploads');
+        if(error)throw error;if(live){setRows(data||[]);setError('');}
+      }catch(_){if(live)setError('Unable to check upload delivery. Your original files remain in JAN CPT.');}
+    }
+    load();const timer=setInterval(load,30000);return()=>{live=false;clearInterval(timer);};
+  },[projectId]);
+  return e('div',{className:'sp-files'},e('strong',null,'Uploads to SharePoint'),
+    e('p',{className:'docs-lf-hint'},'New JAN CPT files and walkthrough photos are queued for Capital Programming / Documents / JAN CPT / Project name / Photos or Files. Existing uploads are not moved.'),
+    error&&e('p',{role:'alert'},error),!rows.length&&!error&&e('p',{className:'docs-lf-hint'},'No new uploads queued yet.'),
+    e('div',{className:'sp-file-list'},rows.map(row=>e('div',{className:'sp-file-row',key:row.id},
+      row.destination_url?e('a',{href:row.destination_url,target:'_blank',rel:'noopener noreferrer'},row.file_name):e('span',null,row.file_name),
+      e('small',null,row.status==='delivered'?'Saved to SharePoint · '+new Date(row.delivered_at).toLocaleString():row.status==='error'?row.error_message:row.status==='sending'?'Sending to SharePoint…':'Queued for SharePoint')))));
 }
 
 function SharePointDocuments({projectId,folderLinked}) {
