@@ -1897,6 +1897,13 @@ function WalkthroughGallery({ projectId }) {
 
 function LastWalkthrough({ projectId }) {
   const [visit, setVisit] = useState(undefined); // undefined = still loading
+  const [showStaleWarning, setShowStaleWarning] = useState(true);
+  useEffect(() => {
+    setShowStaleWarning(true);
+    if (!visit) return;
+    const timer = setTimeout(() => setShowStaleWarning(false), 30000);
+    return () => clearTimeout(timer);
+  }, [projectId, visit]);
 
   useEffect(() => {
     let live = true;
@@ -1933,7 +1940,7 @@ function LastWalkthrough({ projectId }) {
       React.createElement("div", { className: "lw-stats" },
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, `${visit.items_done}/${visit.items_total}`), React.createElement("i", null, "Checked")),
         React.createElement("div", { className: "lw-stat" }, React.createElement("b", null, String(visit.note_count || 0)), React.createElement("i", null, "Notes")))),
-    stale && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
+    stale && (stale !== "red" || showStaleWarning) && React.createElement("div", { className: "lw-stale" + (stale === "red" ? " lw-stale-red" : "") }, `No walkthrough in ${days} days.` + (stale === "red" ? " Field condition is unverified — worth asking about before the next report goes out." : " Worth scheduling one.")),
     React.createElement(WalkthroughGallery, { key: projectId, projectId }));
 }
 
