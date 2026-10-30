@@ -1666,7 +1666,7 @@ function Tracker({
   }, "Acknowledge"))), /*#__PURE__*/React.createElement("main", {
     key: tab,
     className: "fade-in"
-  }, tab === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
+  }, tab === "dashboard" && React.createElement(GrantNumberEditor, {grant, setGrant, isEditor}), tab === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
     current: current,
     rows: rows,
     cal: cal,
@@ -2875,6 +2875,23 @@ function BoardMemo({
 }
 
 /* ================= Grant & Compliance ================= */
+function GrantNumberEditor({grant, setGrant, isEditor}) {
+  const sections = grantSections(grant);
+  return React.createElement("section", {className:"panel", style:{margin:"20px"}, "aria-label":"Project grant numbers"},
+    React.createElement("h2", null, "Grant numbers"),
+    React.createElement("div", {className:"grant-meta"}, sections.map((section, index) =>
+      React.createElement("label", {key:section.id || index},
+        React.createElement("span", null, section.name || section.type || "Grant"),
+        React.createElement("input", {type:"text", value:section.grantNo || "", readOnly:!isEditor,
+          "aria-label":(section.name || section.type || "Grant") + " grant number", placeholder:"Enter grant number",
+          onChange:event => {
+            if (!isEditor) return;
+            const value = event.target.value;
+            setGrant(previous => ({...previous, sections:grantSections(previous).map((item, i) => i === index ? {...item, grantNo:value} : item)}));
+          }})))),
+    isEditor && React.createElement("p", {className:"sub2"}, "Edit grant numbers here or under Grant & Compliance. Changes save automatically; check the cloud save status at the top."));
+}
+
 function GrantTab({
   grant,
   setGrant,
@@ -2923,7 +2940,8 @@ function GrantTab({
     return [v || ""];
   };
   const writeDocs = (name, arr) => {
-    const clean = arr.filter((x, i) => x !== "" || i === 0);
+    // Keep blank rows while editing so Add another creates a usable input.
+    const clean = arr;
     set({
       docs: {
         ...(grant.docs || {}),
