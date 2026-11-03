@@ -20,7 +20,7 @@ test('preview stays explicitly unapplied with collapsed report details and Centr
 });
 test('project filtering occurs before limiting latest report and omits unrelated changes',async()=>{
  const e=env({data:[{...run,preview:[...run.preview,{projectId:'other',budgetChanged:true,title:'Other',budget:999}]}],error:null},'p');await e.load();
- assert.equal(e.calls[0][0],'contains');assert.equal(e.calls[0][2][0].projectId,'p');assert.equal(e.calls[1][0],'limit');
+ assert.equal(e.calls[0][0],'contains');assert.equal(typeof e.calls[0][2],'string');assert.equal(JSON.parse(e.calls[0][2])[0].projectId,'p');assert.equal(e.calls[1][0],'limit');
  assert.doesNotMatch(text(e.render()),/Other|999/);e.close();
 });
 test('query errors show a retryable status rather than claiming there are no reports',async()=>{
