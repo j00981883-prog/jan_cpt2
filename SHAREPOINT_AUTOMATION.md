@@ -52,3 +52,103 @@ Credential record b97ab8d4-0a44-4ed4-96ff-92afe4e6ac25 is enabled. To rotate, pr
 - Security advisor: the key table intentionally has RLS with no client policies and all client grants revoked. Other reported findings concern pre-existing database objects and were not changed in this feature.
 
 Microsoft connector reference: https://learn.microsoft.com/en-us/sharepoint/dev/business-apps/power-automate/sharepoint-connector-actions-triggers
+
+## Optional file contents for JAN AI — November 3, 2026
+
+The receiving code and migration now support a private AI copy alongside the
+existing metadata index. Migration `sharepoint_ai_file_contents` was applied
+and `sharepoint-sync` version 4 deployed on November 3. The Power Automate
+content action and real-file verification must be completed before claiming
+that existing SharePoint contents are available live.
+
+Keep the existing `sharepoint-sync` URL, scoped header, and metadata fields.
+Add an optional `content_base64` field containing the unmodified base64
+`$content` value from SharePoint **Get file content**. Do not send a data URL,
+a serialized binary object, or a browser download URL. Never place a service
+role key in the flow. Secure the content action's outputs and the receiving
+HTTP action's inputs/outputs in run history.
+
+The payload remains:
+
+```json
+{
+  "site_url": "https://jmaait.sharepoint.com/sites/CapitalProgramming",
+  "library_id": "<existing library UUID>",
+  "item_id": "<existing SharePoint item ID>",
+  "file_name": "Scope.pdf",
+  "url": "<direct file URL under the mapped project folder>",
+  "modified_at": "<ISO modified timestamp with timezone>",
+  "version": "<the version whose bytes were fetched>",
+  "content_base64": "<raw base64 from Get file content>"
+}
+```
+
+Fetch metadata before and after reading the bytes. Deliver contents only when
+the file's modification time and version stayed the same; otherwise retry the
+file using its newer metadata. The receiver verifies metadata identity but
+cannot independently identify the SharePoint version of arbitrary bytes.
+
+Only PDF and UTF-8 TXT, MD, CSV, or JSON files up to **3,600,000 decoded bytes**
+are accepted. PDF bytes must have a PDF header; text cannot contain binary
+control characters or invalid UTF-8. Office documents and larger files still
+receive their normal metadata/link; they need a supported export for AI
+reading. Filter these before Get file content to avoid sending oversized
+requests. The total HTTP JSON body is limited to 4,850,000 bytes. Metadata-only
+requests retain their existing 16,384-byte limit.
+
+The receiver first processes metadata through the original RPC, then handles
+optional contents. It accepts a first content copy even if that file's
+timestamp was already indexed. Thus an initial backfill can reuse existing
+file metadata without creating duplicate index records. Response `status`
+retains its existing meaning and `content_status` reports:
+
+| Value | Meaning |
+| --- | --- |
+| `not_provided` | Normal metadata-only delivery. |
+| `cached` | Contents stored and linked to the current indexed version. |
+| `unchanged` | The same content version is already linked. |
+| `stale` | A newer or different indexed version exists; no old copy was linked. |
+| `conflict` | Different bytes arrived for an identical version/time; existing contents were preserved. |
+| `unsupported`, `invalid`, `too_large` | Metadata accepted, contents rejected with a safe explanation. |
+| `error` | Metadata accepted, transient content-storage failure; HTTP 503 asks the flow to retry. |
+
+For equal modification timestamps, the metadata receiver accepts a strictly
+higher numeric SharePoint `major.minor` version and ignores older numeric
+versions. Unknown ordering, or different file identity with the same version
+and timestamp, sets `content_version_conflict`. Its cache pointer is removed
+and AI access stays blocked even if the old event is replayed. A delivery with
+a strictly newer modification timestamp resolves the conflict; source files
+and privately retained cache objects are not deleted. Such a metadata response
+has `status: "conflict"`.
+
+Contents go to private bucket `sharepoint-ai`, with pointers in
+`sharepoint_file_contents`. Immutable object paths contain project identity,
+hashed source identity, hashed version/time, and the byte hash. A locked,
+service-only RPC refuses stale metadata and never overwrites an immutable file.
+The assistant must match project, modification timestamp, and version before
+reading. Storage policies independently enforce that current-version match
+and the caller's existing project access. Anonymous reads and client writes
+to this bucket are denied even when another storage policy is permissive.
+
+These copies never become `documents` rows, so they cannot enter the outbound
+SharePoint upload queue. Existing dashboard documents remain separately
+available to AI. SharePoint originals, permissions, file revisions, and other
+dashboard data are unchanged. Superseded or race-lost cache objects may remain
+privately stored, but client policies do not expose them after their pointer
+is no longer current. No source deletion or automatic cache cleanup is added.
+
+Local validation: `node --test tests/sharepoint-content.test.cjs
+tests/sharepoint.test.cjs` covers byte limits, malformed content, stable paths,
+metadata-only compatibility, backfill/retry, stale-version races, and failures.
+The live rollback-only script `tests/sharepoint-content-rollback.sql` passed
+numeric-version ordering, duplicate and stale cache requests, conflicting
+content rejection, authenticated current-content reads, denied client writes
+and RPC invocation, stale-content denial, anonymous denial, and conflict
+recovery. Its synthetic database metadata fixtures were rolled back and a
+follow-up query confirmed zero retained test projects, metadata, or objects.
+This does not replace a real Storage API / Microsoft byte-delivery check.
+
+The deployed receiver returned HTTP 401 to an unauthenticated request. Security
+advisors reported no new feature findings; existing unrelated findings remain.
+The new project lookup index is currently reported unused, as expected before
+real content traffic. The bucket is private with its 3,600,000-byte limit.

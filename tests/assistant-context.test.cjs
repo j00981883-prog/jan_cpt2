@@ -13,7 +13,8 @@ test('AI evidence uses full FAA milestones, funding gaps and missing-progress wa
  assert.ok(facts.warnings.some(w=>w.includes('$25.00')));
  assert.ok(facts.warnings.some(w=>w.includes('completion date has passed')));
  assert.ok(facts.warnings.some(w=>w.includes('no file or URL')));
- assert.match(facts.sharepoint.contentAccess,/No Microsoft file contents/);
+ assert.match(facts.sharepoint.contentAccess,/metadata, not file contents/);
+ assert.match(facts.sharepoint.contentAccess,/selected dashboard uploads, current synced SharePoint file copies/);
 });
 test('AI evidence counts named sections accurately and aligns variance to logged rows',async()=>{
  const {projectEvidence}=await ready;
@@ -28,7 +29,8 @@ test('open-project evidence is first and file metadata never claims contents wer
  const p=[{id:'a',title:'One'},{id:'b',title:'Two',sharepoint_folder_url:'https://example.sharepoint.com/folder'}];
  const result=evidenceBriefing(p,[],[],[],[{project_id:'b',file_name:'Contract.pdf',modified_at:'2026-10-01'}],'b','2026-10-21');
  assert.equal(result.sources[0].id,'project:b');
- assert.ok(result.text.includes('Contract.pdf'));assert.ok(result.text.includes('No Microsoft file contents'));
+ assert.ok(result.text.includes('Contract.pdf'));assert.ok(result.text.includes('metadata, not file contents'));
+ assert.ok(result.text.includes('Separately supplied selected dashboard uploads'));
  assert.ok(result.text.indexOf('[SOURCE project:b]')<result.text.indexOf('[SOURCE project:a]'));
 });
 test('AI preserves recorded zero and labels absent financial values unknown',async()=>{

@@ -3,20 +3,22 @@ const {stripTypeScriptTypes}=require('node:module');
 const {test}=require('node:test');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../supabase/functions/assistant/index.ts'),'utf8').replace(/^import .*;\r?\n/gm,'');
 const script=stripTypeScriptTypes(source);
-async function setup({signedIn=true,role='editor',brokenTable=false,providerStatus=200,stopReason='end_turn'}={}){
+async function setup({signedIn=true,role='editor',brokenTable=false,providerStatus=200,stopReason='end_turn',records={},storageFailure=false}={}){
  const {evidenceBriefing}=await import('../supabase/functions/assistant/context.mjs');
- let handler;const calls=[],downloads=[],secrets=[];
+ const {readAssistantRequest,loadAiDocuments,buildSelectedFileContent}=await import('../supabase/functions/assistant/documents.mjs');
+ let handler;const calls=[],downloads=[],secrets=[],clientOptions=[];
  const tables={projects:[{id:'p1',title:'Test project',meta:{totalBudget:100},sched:{},grant_info:{}}],weekly_actuals:[],pay_apps:[],
- documents:[{id:'d1',project_id:'p1',label:'Scope',file_name:'Scope.txt',storage_path:'p1/scope.txt',size_bytes:20,review_status:'draft'}],sharepoint_documents:[]};
+ documents:[{id:'d1',project_id:'p1',label:'Scope',file_name:'Scope.txt',storage_path:'p1/scope.txt',size_bytes:20,review_status:'draft'}],sharepoint_documents:[],...records};
  const client={auth:{getUser:async()=>signedIn?{data:{user:{id:'u1'}}}:{data:{},error:Error('No session')}},from(table){
-  const result={select(){return this;},eq(){return this;},order(){return this;},limit(){return this;},single:async()=>({data:{role}}),
-  then(resolve){return Promise.resolve(brokenTable?{error:Error('Unavailable')}:{data:tables[table]||[]}).then(resolve);}};return result;
- },storage:{from:()=>({download:async path=>{downloads.push(path);return{data:new Blob(['Scope says paint two rooms.'])};}})}};
- const c={Request,Response,Blob,Date,JSON,Number,String,Uint8Array,btoa,AbortSignal,evidenceBriefing,console:{error(){}},
- createClient:()=>client,Deno:{env:{get:name=>{secrets.push(name);return name==='ANTHROPIC_API_KEY'?'test-placeholder':'https://test.invalid';}},serve:fn=>{handler=fn;}},
+  const filters=[];let one=false;
+  const result={select(){return this;},eq(k,v){filters.push([k,v]);return this;},order(){return this;},limit(){return this;},single:async()=>({data:{role}}),maybeSingle(){one=true;return this;},abortSignal(){return this;},
+  then(resolve,reject){const data=(tables[table]||[]).filter(row=>filters.every(([k,v])=>row[k]===v));return Promise.resolve(brokenTable?{error:Error('Unavailable')}:{data:one?data[0]||null:data}).then(resolve,reject);}};return result;
+ },storage:{from:bucket=>({download:async path=>{downloads.push(path);return storageFailure?{error:Error('Storage unavailable')}:{data:new Blob([bucket==='sharepoint-ai'?'Invoice total is $250.':'Scope says paint two rooms.'])};}})}};
+ const c={Request,Response,Blob,Date,JSON,Number,String,Uint8Array,btoa,AbortSignal,evidenceBriefing,readAssistantRequest,loadAiDocuments,buildSelectedFileContent,console:{error(){}},
+ createClient:(url,key,options)=>{clientOptions.push(options);return client;},Deno:{env:{get:name=>{secrets.push(name);return name==='ANTHROPIC_API_KEY'?'test-placeholder':'https://test.invalid';}},serve:fn=>{handler=fn;}},
  fetch:async(url,options)=>{calls.push(JSON.parse(options.body));return new Response(JSON.stringify({content:[{type:'text',text:'Reviewed supplied evidence.'}],stop_reason:stopReason}),{status:providerStatus});}};
  vm.runInNewContext(script,c);
- return{calls,downloads,secrets,send:async body=>{const response=await handler(new Request('https://test.invalid',{method:'POST',headers:{Authorization:'Bearer test-session','content-type':'application/json'},body:JSON.stringify(body)}));return{status:response.status,body:await response.json()};}};
+ return{calls,downloads,secrets,clientOptions,send:async body=>{const response=await handler(new Request('https://test.invalid',{method:'POST',headers:{Authorization:'Bearer test-session','content-type':'application/json'},body:JSON.stringify(body)}));return{status:response.status,body:await response.json()};}};
 }
 test('AI service rejects signed-out and non-editor edit requests before AI calls',async()=>{
  const a=await setup({signedIn:false});assert.equal((await a.send({question:'Hello'})).status,401);assert.equal(a.calls.length,0);
@@ -25,9 +27,32 @@ test('AI service rejects signed-out and non-editor edit requests before AI calls
 test('selected project file is read through caller storage access and supplied as evidence',async()=>{
  const s=await setup();const r=await s.send({question:'Summarize the scope',mode:'ask',targetProject:{id:'p1'},documentId:'d1'});
  assert.equal(r.status,200);assert.deepEqual(s.downloads,['p1/scope.txt']);
- assert.match(s.calls[0].messages[0].content,/paint two rooms/);
+ assert.match(JSON.stringify(s.calls[0].messages[0].content),/paint two rooms/);
  assert.ok(r.body.sources.some(x=>x.kind==='document contents'&&x.name==='Scope.txt'));
  assert.ok(!s.secrets.includes('SUPABASE_SERVICE_ROLE_KEY'));
+ assert.equal(s.clientOptions[0].global.headers.Authorization,'Bearer test-session');
+});
+
+test('AI reads dashboard and current SharePoint contents together and returns distinct source citations',async()=>{
+ const s=await setup({records:{sharepoint_documents:[{source_id:'library:2',project_id:'p1',file_name:'Invoice.txt',url:'https://jmaait.sharepoint.com/sites/CapitalProgramming/Shared%20Documents/Project/Invoice.txt',modified_at:'2026-11-03T10:00:00Z',source_version:'2'}],
+  sharepoint_file_contents:[{source_id:'library:2',project_id:'p1',storage_path:'p1/invoice.txt',size_bytes:30,source_modified_at:'2026-11-03T10:00:00+00:00',source_version:'2',cached_at:'2026-11-03T10:01:00Z'}]}});
+ const r=await s.send({question:'Compare these files.',targetProject:{id:'p1'},documentRefs:[{source:'dashboard',id:'d1'},{source:'sharepoint',id:'library:2'}]});
+ assert.equal(r.status,200);
+ const evidence=JSON.stringify(s.calls[0].messages.at(-1).content);
+ assert.match(evidence,/paint two rooms/);assert.match(evidence,/Invoice total is \$250/);
+ assert.match(evidence,/Dashboard file/);assert.match(evidence,/SharePoint synced file/);
+ assert.deepEqual(r.body.documentsRead,[{name:'Scope.txt',source:'dashboard'},{name:'Invoice.txt',source:'sharepoint'}]);
+ assert.ok(r.body.sources.some(source=>source.source==='sharepoint'&&source.url.startsWith('https://jmaait.sharepoint.com/')));
+ assert.match(s.calls[0].system,/do not silently replace either/);
+ assert.ok(!s.secrets.includes('SUPABASE_SERVICE_ROLE_KEY'));
+});
+
+test('uncached SharePoint files, inaccessible project selections and storage failures never reach the AI',async()=>{
+ const s=await setup({records:{sharepoint_documents:[{source_id:'library:2',project_id:'p1',file_name:'Invoice.txt',url:'https://jmaait.sharepoint.com/sites/CapitalProgramming/Shared%20Documents/Project/Invoice.txt',modified_at:'2026-11-03T10:00:00Z',source_version:'2'}]}});
+ assert.equal((await s.send({question:'Read the invoice',documentRefs:[{source:'sharepoint',id:'library:2'}]})).status,409);
+ assert.equal(s.calls.length,0);
+ const wrong=await setup();assert.equal((await wrong.send({question:'Read the file',targetProject:{id:'missing'},documentRefs:[{source:'dashboard',id:'d1'}]})).status,403);assert.equal(wrong.calls.length,0);
+ const storage=await setup({storageFailure:true});assert.equal((await storage.send({question:'Read file',documentId:'d1'})).status,503);assert.equal(storage.calls.length,0);
 });
 test('missing files and incomplete record queries do not produce guessed AI answers',async()=>{
  const s=await setup();assert.equal((await s.send({question:'Read it',documentId:'not-on-file'})).status,400);assert.equal(s.calls.length,0);

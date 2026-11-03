@@ -215,7 +215,7 @@ export function projectEvidence(p,weekly,payapps,documents,sharepoint,today) {
       readableInApp:!!d.storage_path&&/\.(pdf|txt|md|csv|json)$/i.test(d.file_name||''),hasAttachment:!!(d.storage_path||d.url)})),
     legacyDocumentIndex:legacyDocs.slice(0,100),
     sharepoint:{folder:p.sharepoint_folder_url||null,indexedFiles:sp.slice(0,40).map(d=>({name:d.file_name,modified:d.modified_at,received:d.received_at})),
-      contentAccess:'SharePoint links and indexed metadata only. No Microsoft file contents are available through a folder URL. A selected uploaded file or user attachment may be read separately.'}};
+      contentAccess:'This index contains SharePoint links and metadata, not file contents. A folder URL does not grant a live library read. Separately supplied selected dashboard uploads, current synced SharePoint file copies, or user attachments may be read as evidence.'}};
 }
 
 export function evidenceBriefing(projects,weekly,payapps,documents,sharepoint,targetId,today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Chicago'})) {
