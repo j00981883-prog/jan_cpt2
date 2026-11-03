@@ -354,3 +354,59 @@ test('open assistant immediately follows project props even before the editor br
   assert.equal(env.calls.length, 1, 'An edit cannot use a bridge from another project');
   assert.match(text(render()), /Open a capital project you can edit first/);
 });
+
+test('project navigation clears selected files and the picker while same-project follow-ups retain them', async () => {
+  const sources = [{ id: 'dashboard:d1', name: 'Budget.pdf', kind: 'document contents', source: 'dashboard' }];
+  const env = runtime({ invoke: () => ({ data: { answer: 'Reviewed the project files.', sources } }) });
+  let props = { isEditor: false, projectId: 'p1', projectTitle: 'Threshold Lighting' };
+  const render = () => { env.render('Assistant', props); env.runEffects(); return env.render('Assistant', props); };
+  async function send(question) {
+    all(render()).find(node => node.tag === 'input' && node.props.value !== undefined).props.onChange({ target: { value: question } });
+    await button(render(), 'Send').props.onClick();
+    return render();
+  }
+  render().props.onClick();
+  button(render(), 'Read project files').props.onClick();
+  all(render()).find(node => node.tag === env.context.AssistantDocumentPicker).props.onSelect([
+    { source: 'dashboard', id: 'd1', name: 'Budget.pdf' }, { source: 'sharepoint', id: 's1', name: 'Contract.pdf' }
+  ]);
+  await send('Compare these files');
+  props = { ...props, projectTitle: 'Threshold Lighting updated title' };
+  await send('Explain the total');
+  assert.equal(env.calls[1].documentRefs.length, 2, 'Same-project updates keep the selection');
+  button(render(), 'Read project files').props.onClick();
+  props = { ...props, projectId: null, projectTitle: '' };
+  let tree = render();
+  assert.equal(all(tree).some(node => node.tag === env.context.AssistantDocumentPicker), false);
+  assert.equal(all(tree).some(node => node.props.className === 'ai-attached-name'), false);
+  props = { ...props, projectId: 'p2', projectTitle: 'RSA Drainage' };
+  tree = await send('Summarize this project');
+  assert.equal(env.calls[2].targetProject.id, 'p2');
+  assert.equal(env.calls[2].documentRefs, undefined);
+  assert.equal(env.calls[2].document, undefined);
+  assert.equal(env.calls[2].history[0].content, 'Compare these files', 'Navigation preserves chat history');
+  assert.ok(all(tree).some(node => node.tag === env.context.AssistantAnswerSources && node.props.sources?.[0]?.name === 'Budget.pdf'), 'Earlier answer citations remain available');
+  button(tree, 'Read project files').props.onClick();
+  const picker = all(render()).find(node => node.tag === env.context.AssistantDocumentPicker);
+  assert.equal(picker.props.projectId, 'p2');
+  assert.equal(picker.props.initialSelection.length, 0);
+});
+
+test('a local file still loading during navigation cannot replace a file selected in the new project', async () => {
+  const env = runtime();
+  let props = { isEditor: false, projectId: 'p1', projectTitle: 'Threshold Lighting' }, finishOld;
+  const render = () => { env.render('Assistant', props); env.runEffects(); return env.render('Assistant', props); };
+  const upload = file => all(render()).find(node => node.tag === 'input' && node.props.type === 'file').props.onChange({ target: { files: [file], value: file.name } });
+  render().props.onClick();
+  upload({ name: 'Old notes.txt', size: 20, type: 'text/plain', text: () => new Promise(resolve => { finishOld = resolve; }) });
+  props = { ...props, projectId: 'p2', projectTitle: 'RSA Drainage' };
+  render();
+  upload({ name: 'RSA notes.txt', size: 20, type: 'text/plain', text: async () => 'RSA notes' });
+  await flush();
+  finishOld('Old project notes'); await flush();
+  all(render()).find(node => node.tag === 'input' && node.props.value !== undefined).props.onChange({ target: { value: 'Read this file' } });
+  await button(render(), 'Send').props.onClick();
+  assert.equal(env.calls[0].targetProject.id, 'p2');
+  assert.equal(env.calls[0].document.name, 'RSA notes.txt');
+  assert.equal(env.calls[0].document.text, 'RSA notes');
+});

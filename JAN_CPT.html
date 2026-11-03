@@ -7980,6 +7980,19 @@ function Assistant({
   const [showSources, setShowSources] = useState(false);
   const [answerSources, setAnswerSources] = useState([]);
   const requestLock = React.useRef(false);
+  const fileReadVersion = React.useRef(0);
+  const previousProject = React.useRef(contextProjectId);
+  useEffect(()=>{
+    if(previousProject.current===contextProjectId)return;
+    previousProject.current=contextProjectId;
+    fileReadVersion.current++;
+    setAttached(null);
+    setReading(false);
+    setShowSources(false);
+    setPending(null);
+    setFollowUp(null);
+    if(fileRef.current)fileRef.current.value='';
+  },[contextProjectId]);
   useEffect(()=>{const listener=event=>setOpen(event.detail===true);window.addEventListener('jan-presentation-ai',listener);return()=>window.removeEventListener('jan-presentation-ai',listener);},[]);
   function propose(plan, bridge, sources = []) {
     if (!isEditor || !bridge || contextProjectId !== bridge.projectId || window.JMAA_APPLY?.projectId !== bridge.projectId) throw new Error("Open the intended project before proposing changes.");
@@ -8167,6 +8180,7 @@ function Assistant({
   // directly; PDFs are passed through for the model to parse.
   async function attachFile(file) {
     if (!file) return;
+    const version = ++fileReadVersion.current;
     setReading(true);
     try {
       if (file.size > 3600000) {
@@ -8180,12 +8194,14 @@ function Assistant({
           r.onerror = () => rej(new Error("Couldn't read that file."));
           r.readAsDataURL(file);
         });
+        if(version!==fileReadVersion.current)return;
         setAttached({
           name: file.name,
           pdf: b64
         });
       } else {
         const text = await file.text();
+        if(version!==fileReadVersion.current)return;
         if (!text.trim()) throw new Error("That file looks empty.");
         setAttached({
           name: file.name,
@@ -8193,12 +8209,12 @@ function Assistant({
         });
       }
     } catch (e) {
-      setMsgs(m => [...m, {
+      if(version===fileReadVersion.current)setMsgs(m => [...m, {
         role: "err",
         text: e.message || String(e)
       }]);
     } finally {
-      setReading(false);
+      if(version===fileReadVersion.current)setReading(false);
     }
   }
 

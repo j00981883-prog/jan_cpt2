@@ -62,14 +62,24 @@ updates flow (`0d707df3-0548-4044-ba62-c99bba78213d`) and initial index flow
 (`6e10d889-7abb-4cc9-8a1b-18ce25d7a522`) were saved with the content-delivery
 stage. The existing metadata HTTP actions remain in place.
 
-The initial backfill found **691 files** and is processing them. At 11:15 AM
-Central on November 3, seven real files totaling 7,769,022 bytes were cached.
-The first was RSA's `RFQ Runway 16L 34R Safety Area Improvements at JAN.pdf`
-(860,212 bytes). RSA's Michael Baker proposal and Apron Lighting's Arora fee
-proposal also arrived. The first four records checked matched their current
-SharePoint metadata timestamp/version and had no version conflict. This
-verifies actual file-byte delivery; it does not mean all 691 files are ready,
-and unsupported or oversized files remain link-only.
+The initial backfill found **691 files**. Its first run was cancelled after
+4 minutes 14 seconds and replaced by a run with Apply to each concurrency set
+to **4**, started at **11:20 AM Central on November 3**:
+
+https://make.gov.powerautomate.us/environments/Default-9788b7ae-68dd-475a-963f-aaaba469f043/flows/6e10d889-7abb-4cc9-8a1b-18ce25d7a522/runs/08584078804298409993308008415CU13
+
+At **11:24 AM Central (17:24:30 UTC)**, the replacement run was
+still processing and **246 files were cached**. All 246 matched their current
+SharePoint metadata; none were stale. These are dated progress counts, not a
+claim that all 691 files are ready. Unsupported or oversized files remain
+link-only. The first confirmed delivery was RSA's
+`RFQ Runway 16L 34R Safety Area Improvements at JAN.pdf` (860,212 bytes).
+
+A real authenticated dashboard test also passed: JAN AI read the Dashboard
+and SharePoint copies of
+`RWY 16L-34R Threshold Lighting at JAN_Project Detail Summary.PDF` together,
+identified and cited both source versions, and correctly compared their
+contents. This test made no changes to project records.
 
 The initial index now includes the `Shared Documents/JAN CPT/` workspace
 alongside its five legacy project folder scopes. The receiver still requires
@@ -170,9 +180,11 @@ content rejection, authenticated current-content reads, denied client writes
 and RPC invocation, stale-content denial, anonymous denial, and conflict
 recovery. Its synthetic database metadata fixtures were rolled back and a
 follow-up query confirmed zero retained test projects, metadata, or objects.
-This does not replace a real Storage API / Microsoft byte-delivery check.
+The separate Microsoft deliveries and authenticated dashboard comparison
+described above verify actual file-byte delivery and reading.
 
 The deployed receiver returned HTTP 401 to an unauthenticated request. Security
 advisors reported no new feature findings; existing unrelated findings remain.
-The new project lookup index is currently reported unused, as expected before
-real content traffic. The bucket is private with its 3,600,000-byte limit.
+Immediately after deployment, the new project lookup index was reported unused
+before real content traffic began. The bucket is private with its
+3,600,000-byte limit.
