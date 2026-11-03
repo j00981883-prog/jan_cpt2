@@ -312,7 +312,7 @@ test('App passes the visible project to the assistant for capital, internal and 
   for (const category of ['capital', 'internal']) {
     for (const role of ['viewer', 'editor']) {
       let index = 0;
-      const state = [{ user: { id: 'user' } }, false, { role }, 'visible-project', { meta: { title: 'Visible project', projectCategory: category } }, '', false, 0, false, false, false, null];
+      const state = [{ user: { id: 'user' } }, false, { id:'user',role }, 'visible-project', { meta: { title: 'Visible project', projectCategory: category } }, '', false, '', 0, '', 0, 0, false, false, false, null];
       const context = {
         CONFIGURED: true, BOOT_ERROR: null, window: {}, useEffect() {}, useState: () => [state[index++], () => {}],
         React: { Fragment: 'fragment', useRef: initial => ({ current: initial }), createElement: (tag, props, ...children) => ({ tag, props: props || {}, children }) },

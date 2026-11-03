@@ -4,21 +4,21 @@ const html=fs.readFileSync(require('node:path').join(__dirname,'..','JAN_CPT.htm
 const all=n=>Array.isArray(n)?n.flatMap(all):n&&typeof n==='object'?[n,...n.children.flatMap(all)]:[];
 function setup(editor=true){
  let grant={docs:{Letter:'https://example.com/first'},sections:[{id:'a',name:'FAA AIP',grantNo:'001',done:{Submitted:true},completionDates:{Submitted:'2026-10-01'}},{id:'b',name:'FAA AIG',grantNo:'002'}]};
- const c={React:{createElement:(tag,props,...children)=>({tag,props:props||{},children})},grantSections:g=>g.sections};
- vm.createContext(c);vm.runInContext(html.slice(html.indexOf('function GrantNumberEditor('),html.indexOf('function GrantTab(')),c);
+ const c={React:{createElement:(tag,props,...children)=>({tag,props:props||{},children})},grantSections:g=>g.sections,expandItems:items=>items||[],GRANT_TEMPLATES:{'FAA AIG':[]},PROJECT_DOCS:[],Field:'Field',fmtMoney:String,fmtMoney2:String};
+ vm.createContext(c);vm.runInContext(html.slice(html.indexOf('function GrantTab('),html.indexOf('function Contracts(')),c);
  const setGrant=next=>{grant=typeof next==='function'?next(grant):next;};
- return {c,get:()=>grant,render:()=>c.GrantNumberEditor({grant,setGrant,isEditor:editor}),setGrant};
+ return {c,get:()=>grant,render:()=>c.GrantTab({grant,setGrant,isEditor:editor,execSum:{msDone:0,msTotal:0},meta:{funding:[]}}),setGrant};
 }
-test('dashboard grant editing preserves other grants, checklist dates and document links',()=>{
- const e=setup();all(e.render()).find(n=>n.tag==='input').props.onChange({target:{value:'3-28-0037-054-2026'}});
+test('Grant & Compliance number editing preserves other grants, checklist dates and document links',()=>{
+ const e=setup();all(e.render()).find(n=>n.tag==='input'&&n.props.value==='001').props.onChange({target:{value:'3-28-0037-054-2026'}});
  assert.equal(e.get().sections[0].grantNo,'3-28-0037-054-2026');
  assert.equal(e.get().sections[1].grantNo,'002');
  assert.equal(e.get().sections[0].completionDates.Submitted,'2026-10-01');
  assert.equal(e.get().docs.Letter,'https://example.com/first');
 });
 test('viewers can read grant numbers but cannot edit them',()=>{
- const e=setup(false),input=all(e.render()).find(n=>n.tag==='input');
- assert.equal(input.props.readOnly,true);input.props.onChange({target:{value:'changed'}});
+ const e=setup(false),tree=e.render(),input=all(tree).find(n=>n.tag==='input'&&n.props.value==='001');
+ assert.equal(tree.tag,'fieldset');assert.equal(tree.props.disabled,true);input.props.onChange({target:{value:'changed'}});
  assert.equal(e.get().sections[0].grantNo,'001');
 });
 test('documentation supports adding, filling and removing several link rows',()=>{

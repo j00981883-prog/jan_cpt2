@@ -58,7 +58,7 @@ window.addEventListener("error", function (e) {
 <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"
   onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./grant-reminders.js?v=sharepoint-folders-3"></script>
+<script src="./grant-reminders.js?v=grant-recovery-20261103"></script>
 <script src="./presentation-tour.js?v=20261103"></script>
 <script>
 const {
@@ -195,7 +195,7 @@ function currentFaaSection(section) {
   const completionDates = { ...(section.completionDates || {}) };
   Object.entries(LEGACY_FAA_MILESTONES).forEach(([oldName, newName]) => {
     if (done[oldName] && done[newName] == null) done[newName] = true;
-    if (completionDates[oldName] && !completionDates[newName]) completionDates[newName] = completionDates[oldName];
+    if (completionDates[oldName] && completionDates[newName] == null) completionDates[newName] = completionDates[oldName];
   });
   return { ...section, items: GRANT_MILESTONES, done, completionDates };
 }
@@ -203,9 +203,11 @@ function currentFaaSection(section) {
 // Older projects stored a single flat { milestones: {...} } map. Convert that to
 // one FAA section so nothing already entered is lost.
 function grantSections(grant) {
-  if (grant && Array.isArray(grant.sections) && grant.sections.length) return grant.sections.map(currentFaaSection);
+  // An explicit empty list means the user removed the grants; only older data
+  // without a sections array needs the legacy default.
+  if (grant && Array.isArray(grant.sections)) return grant.sections.map(currentFaaSection);
   const legacy = grant && grant.milestones || {};
-  return [{
+  return [currentFaaSection({
     id: "faa-1",
     name: "FAA AIG Grant Administration",
     type: "FAA AIG",
@@ -214,7 +216,7 @@ function grantSections(grant) {
     completionDates: grant && grant.milestoneDates || {},
     grantNo: "",
     popEnd: ""
-  }];
+  })];
 }
 
 // "Quarterly Reports Submitted" expands into four separate checkboxes so each
@@ -1340,7 +1342,7 @@ function Tracker({
   const exportCSV = () => {
     const esc = v => {
       const t = String(v == null ? "" : v);
-      return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+      return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
     };
     const lines = [];
     lines.push("WEEKLY LOG");
@@ -1352,7 +1354,11 @@ function Tracker({
     pay.list.forEach(p => lines.push([p.number, p.periodEnd, p.work.toFixed(2), (p.retPct * 100).toFixed(1) + "%", p.retainage.toFixed(2), p.netPayable.toFixed(2), p.submitted, p.certified, p.paid, p.reimbRequested, p.reimbReceived, p.reimbReceived ? p.reimbAmt.toFixed(2) : "", p.lagDays == null ? "" : p.lagDays].join(",")));
     lines.push("");
     lines.push("GRANT MILESTONES");
-    GRANT_MILESTONES.forEach(m => lines.push([esc(m), grant.milestones?.[m] ? "Complete" : "Pending"].join(",")));
+    lines.push(["Grant", "GrantNumber", "Milestone", "Status", "CompletionDate"].join(","));
+    grantSections(grant).forEach(section => expandItems(section.items).forEach(m => {
+      lines.push([section.name || section.type || "Grant", section.grantNo || "", m,
+        section.done?.[m] ? "Complete" : "Pending", section.completionDates?.[m] || ""].map(esc).join(","));
+    }));
     download(lines.join("\n"), `JAN-Runway-16L34R-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv");
     say("CSV exported");
   };
@@ -1542,7 +1548,7 @@ function Tracker({
   /* executive summary — the one-page health snapshot */
   const execSum = useMemo(() => {
     const secs = grantSections(grant);
-    const msTotal = secs.reduce((s, x) => s + expandItems(x.items).length, 0) || 1;
+    const msTotal = secs.reduce((s, x) => s + expandItems(x.items).length, 0);
     const msDone = secs.reduce((s, x) => s + expandItems(x.items).filter(m => x.done?.[m]).length, 0);
     const budget = current.budgetBreach ? ["red", "Over budget " + fmtPct(current.cumVariance)] : current.cumVariance > meta.budgetVarianceLimit * 0.6 ? ["amber", "Trending " + fmtPct(current.cumVariance)] : ["green", "On budget"];
     const schedule = current.scheduleBreach ? ["red", current.daysPerWeek.toFixed(1) + " days/wk slippage"] : current.cumDaysLost > 0 ? ["amber", current.cumDaysLost + " days lost"] : ["green", "On schedule"];
@@ -1555,7 +1561,7 @@ function Tracker({
       return executedItem ? !!sec.done?.[executedItem] : items.length > 0 && items.every(m => sec.done?.[m]);
     };
     const grantsExecuted = secs.filter(sectionIsExecuted).length;
-    const compliance = grantsExecuted === secs.length && secs.length > 0
+    const compliance = secs.length === 0 ? ["neutral", "No grants configured"] : grantsExecuted === secs.length
       ? ["green", msDone + " of " + msTotal + " milestones complete"]
       : msDone > 0
         ? ["amber", msDone + " of " + msTotal + " complete · grant in progress"]
@@ -1574,6 +1580,7 @@ function Tracker({
     rows.push(["Risk Level", risk[0], risk[1]]);
     return {
       rows,
+      grantCount: secs.length,
       msDone,
       msTotal
     };
@@ -1597,7 +1604,7 @@ function Tracker({
     if (current.cumDaysLost > 0) t.push(`Schedule — ${current.cumDaysLost} calendar day${current.cumDaysLost > 1 ? "s" : ""} lost to date`);
     if (current.projectedOverrun > 0) t.push(`Forecast — Estimate at completion ${fmtMoney(current.forecastAtCompletion)}, ${fmtMoney(current.projectedOverrun)} over budget`);
     if (cal.crosses) t.push(`Fiscal year — Project spans ${cal.fyStartTag}–${cal.fyEndTag}; year rolls ${fmtDate(cal.boundary)}`);
-    t.push(`Grant — ${execSum.msDone} of ${execSum.msTotal} grant administration milestones complete`);
+    t.push(execSum.grantCount === 0 ? "Grant — No grants configured" : `Grant — ${execSum.msDone} of ${execSum.msTotal} grant administration milestones complete`);
     t.push(`${meta.primeContractor} · ${meta.engineerOfRecord} · Week ${current.weeksComplete || 0} of ${cal.nWeeks}`);
     return t;
   }, [current, rows, cal, execSum, meta]);
@@ -1704,7 +1711,7 @@ function Tracker({
   }, "Acknowledge"))), /*#__PURE__*/React.createElement("main", {
     key: tab,
     className: "fade-in"
-  }, tab === "dashboard" && React.createElement(GrantNumberEditor, {grant, setGrant, isEditor}), tab === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
+  }, tab === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
     current: current,
     rows: rows,
     cal: cal,
@@ -1730,6 +1737,7 @@ function Tracker({
     grant: grant,
     setGrant: setGrant,
     execSum: execSum,
+    isEditor: isEditor,
     meta: meta
   }), tab === "contracts" && /*#__PURE__*/React.createElement(Contracts, {
     meta: meta
@@ -2941,33 +2949,17 @@ function BoardMemo({
 }
 
 /* ================= Grant & Compliance ================= */
-function GrantNumberEditor({grant, setGrant, isEditor}) {
-  const sections = grantSections(grant);
-  return React.createElement("section", {className:"panel", style:{margin:"20px"}, "aria-label":"Project grant numbers"},
-    React.createElement("h2", null, "Grant numbers"),
-    React.createElement("div", {className:"grant-meta"}, sections.map((section, index) =>
-      React.createElement("label", {key:section.id || index},
-        React.createElement("span", null, section.name || section.type || "Grant"),
-        React.createElement("input", {type:"text", value:section.grantNo || "", readOnly:!isEditor,
-          "aria-label":(section.name || section.type || "Grant") + " grant number", placeholder:"Enter grant number",
-          onChange:event => {
-            if (!isEditor) return;
-            const value = event.target.value;
-            setGrant(previous => ({...previous, sections:grantSections(previous).map((item, i) => i === index ? {...item, grantNo:value} : item)}));
-          }})))),
-    isEditor && React.createElement("p", {className:"sub2"}, "Edit grant numbers here or under Grant & Compliance. Changes save automatically; check the cloud save status at the top."));
-}
-
 function GrantTab({
   grant,
   setGrant,
   execSum,
+  isEditor = false,
   meta
 }) {
-  const set = patch => setGrant({
+  const set = patch => { if(isEditor)setGrant({
     ...grant,
     ...patch
-  });
+  }); };
   const sections = grantSections(grant);
   const slipDays = grant.origCompletion && grant.revCompletion ? Math.round((new Date(grant.revCompletion) - new Date(grant.origCompletion)) / 86400000) : 0;
   const writeSections = next => set({
@@ -3063,6 +3055,7 @@ function GrantTab({
     }));
   };
   const removeSection = si => {
+    if(!isEditor)return;
     if (!confirm(`Remove "${sections[si].name}"? Its checklist will be deleted.`)) return;
     writeSections(sections.filter((_, i) => i !== si));
   };
@@ -3088,8 +3081,11 @@ function GrantTab({
     : fundGap < 0
       ? `Total funding is ${fmtMoney(Math.abs(fundGap))} below the construction budget (${fmtMoney(constructionBudget)}). Confirm that every funding source has been entered.`
       : `Total funding matches the construction budget (${fmtMoney(constructionBudget)}).`;
-  return /*#__PURE__*/React.createElement("div", {
-    className: "pad"
+  return /*#__PURE__*/React.createElement("fieldset", {
+    className: "pad",
+    disabled: !isEditor,
+    "aria-label": "Grant and compliance details",
+    style: {border:0, margin:0, minWidth:0}
   }, /*#__PURE__*/React.createElement("section", {
     className: "panel rise"
   }, /*#__PURE__*/React.createElement("h2", null, "Funding breakdown"), /*#__PURE__*/React.createElement("div", {
@@ -4191,6 +4187,7 @@ main{max-width:1080px;margin:0 auto}
 .exec-risk{border-color:var(--blue);background:#F1F6FB}
 .dot-ind{width:12px;height:12px;border-radius:50%;flex:none;margin-top:3px}
 .dot-green{background:var(--green)}.dot-amber{background:var(--amber)}.dot-red{background:var(--red);animation:alertPulse 1.7s ease-in-out infinite}
+.dot-neutral{background:var(--dim)}
 .dot-swatch{display:inline-block;margin-right:7px;vertical-align:-1px;animation:none}
 .exec-metric{font-family:var(--disp);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:var(--blue)}
 .exec-status{font-size:12px;color:var(--ink)}
@@ -9467,6 +9464,10 @@ function CloudApp() {
   const [openData, setOpenData] = useState(null);
   const [openError, setOpenError] = useState("");
   const [booting, setBooting] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [authRetry, setAuthRetry] = useState(0);
+  const [profileError, setProfileError] = useState("");
+  const [profileRetry, setProfileRetry] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [display, setDisplay] = useState(false); // big-screen wall board
   // Field view as a MODE rather than a second role. Staff whose role is
@@ -9477,6 +9478,15 @@ function CloudApp() {
   const [presentationMode,setPresentationMode]=useState(false);
   const [presentationTab,setPresentationTab]=useState(null);
   const openRequest=React.useRef(0);
+  const previousAccount=React.useRef(null);
+  useEffect(()=>{
+    const accountId=session?.user?.id || null;
+    if(previousAccount.current===accountId)return;
+    previousAccount.current=accountId;
+    openRequest.current++;
+    setOpenId(null);setOpenData(null);setOpenError("");
+    setFieldView(false);setDisplay(false);setPresentationMode(false);setPresentationTab(null);
+  },[session?.user?.id]);
   useEffect(()=>{
     const navigate=event=>{
       const d=event.detail||{};
@@ -9510,35 +9520,50 @@ function CloudApp() {
       setBooting(false);
       return;
     }
-    sb.auth.getSession().then(({
-      data
-    }) => {
-      setSession(data.session);
-      setBooting(false);
-    });
+    let live = true, authEventSeen = false;
+    setBooting(true);
+    setAuthError("");
     const {
       data: sub
     } = sb.auth.onAuthStateChange((event, s) => {
+      if (!live) return;
+      authEventSeen = true;
       setSession(s);
+      setBooting(false);
+      setAuthError("");
       if (event === "PASSWORD_RECOVERY") {
         sessionStorage.setItem("jan-cpt-password-recovery", "1");
         setRecoveringPassword(true);
       }
     });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    requestWithTimeout(Promise.resolve().then(() => sb.auth.getSession()), "Checking your sign-in", 15000)
+      .then(({data,error}) => {
+        if (!live || authEventSeen) return;
+        if (error) throw error;
+        setSession(data?.session || null);
+        setBooting(false);
+      }).catch(error => {
+        if (!live || authEventSeen) return;
+        setAuthError(error.message || "Your sign-in could not be checked. Please try again.");
+        setBooting(false);
+      });
+    return () => { live = false; sub.subscription.unsubscribe(); };
+  }, [authRetry]);
   useEffect(() => {
-    if (!session) {
-      setProfile(null);
-      return;
-    }
-    sb.from("profiles").select("*").eq("id", session.user.id).single().then(({
-      data
-    }) => setProfile(data || {
-      full_name: session.user.email,
-      role: "viewer"
-    }));
-  }, [session]);
+    let live = true;
+    setProfile(null);
+    setProfileError("");
+    if (!session) return;
+    requestWithTimeout(Promise.resolve().then(() => sb.from("profiles").select("*").eq("id", session.user.id).single()), "Loading your account", 15000)
+      .then(({data,error}) => {
+        if (!live) return;
+        if (error) throw error;
+        setProfile(data || {id:session.user.id,full_name:session.user.email,role:"viewer"});
+      }).catch(error => {
+        if (live) setProfileError(error.message || "Your account could not be loaded. Please try again.");
+      });
+    return () => { live = false; };
+  }, [session?.user?.id,profileRetry]);
   async function open(id) {
     const request=++openRequest.current;
     setOpenData(null);
@@ -9555,6 +9580,7 @@ function CloudApp() {
   if (BOOT_ERROR) return /*#__PURE__*/React.createElement(BootError, {
     msg: BOOT_ERROR
   });
+  if (authError) return React.createElement(CloudLoadError, {title:"Sign-in could not be checked",message:authError,onRetry:()=>setAuthRetry(value=>value+1)});
   if (booting) return /*#__PURE__*/React.createElement("div", {
     className: "cloud-splash"
   }, "Loading…");
@@ -9568,7 +9594,8 @@ function CloudApp() {
     }
   });
   if (!session) return /*#__PURE__*/React.createElement(AuthScreen, null);
-  if (!profile) return /*#__PURE__*/React.createElement("div", {
+  if (profileError) return React.createElement(CloudLoadError, {title:"Account could not be loaded",message:profileError,onRetry:()=>setProfileRetry(value=>value+1)});
+  if (!profile || profile.id !== session.user.id) return /*#__PURE__*/React.createElement("div", {
     className: "cloud-splash"
   }, "Loading…");
 
@@ -9624,6 +9651,13 @@ function CloudApp() {
     projectId: openId || null,
     projectTitle: openData?.meta?.title || ''
   }));
+}
+function CloudLoadError({title,message,onRetry}) {
+  return React.createElement("div", {className:"cloud-auth"},
+    React.createElement("div", {className:"cloud-auth-card",role:"alert"},
+      React.createElement("h1", {className:"cloud-auth-h1"}, title),
+      React.createElement("p", {style:{color:"#44586b",lineHeight:1.6}}, message),
+      React.createElement("button", {className:"btn btn-primary",onClick:onRetry}, "Try again")));
 }
 function BootError({
   msg

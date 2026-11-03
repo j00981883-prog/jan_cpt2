@@ -16,6 +16,7 @@ function GrantReminders({profile,projects,onOpen}) {
   const [note,setNote]=React.useState('');
   const [noUpdates,setNoUpdates]=React.useState(false);
   const [sent,setSent]=React.useState('');
+  const [reload,setReload]=React.useState(0);
   React.useEffect(()=>{const timer=setInterval(()=>setPeriods(grantReminderPeriods()),60000);return()=>clearInterval(timer);},[]);
   React.useEffect(()=>{
     let live=true;setLoaded(false);setDone({});setError('');
@@ -23,7 +24,7 @@ function GrantReminders({profile,projects,onOpen}) {
       .then(({data,error})=>{if(!live)return;if(error)throw error;const result={};(data||[]).forEach(r=>{if(r.period_start===periods[r.cadence])result[r.cadence]=r.completed_at;});setDone(result);setLoaded(true);})
       .catch(e=>{if(live)setError(e.message||String(e));});
     return()=>{live=false;};
-  },[profile.id,periods.daily,periods.weekly]);
+  },[profile.id,periods.daily,periods.weekly,reload]);
   async function complete(cadence){
     if(busy||!loaded)return;setBusy(cadence);setError('');setSent('');
     try{
@@ -36,13 +37,14 @@ function GrantReminders({profile,projects,onOpen}) {
   const e=React.createElement;
   const grantProjects=(projects||[]).filter(p=>p.meta?.projectCategory!=='internal');
   return e('section',{className:'grant-reminders','aria-label':'Grant update reminders'},
-    e('div',{className:'grant-reminders-head'},e('div',null,e('span',{className:'grant-reminders-kicker'},profile.dashboard_designation||'Grants'),e('h2',null,'Your grant reminders')),e('span',{className:'doc-badge review'},loaded?enabled.filter(c=>!done[c]).length+' pending':'Loading…')),
+    e('div',{className:'grant-reminders-head'},e('div',null,e('span',{className:'grant-reminders-kicker'},profile.dashboard_designation||'Grants'),e('h2',null,'Your grant reminders')),e('span',{className:'doc-badge review'},loaded?enabled.filter(c=>!done[c]).length+' pending':error?'Unavailable':'Loading…')),
     e('div',{className:'grant-reminder-grid'},enabled.map(c=>e('div',{key:c,className:'grant-reminder-card'+(done[c]?' complete':'')},e('strong',null,c==='daily'?'Daily grant check-in':'Weekly grant updates'),e('p',null,c==='daily'?'Review grant dates, upcoming submissions and items needing attention.':'Update milestone completion dates, reports and grant status for active projects.'),e('small',null,c==='daily'?'Today · '+periods.daily:'Week beginning · '+periods.weekly),done[c]&&e('span',{className:'doc-badge approved'},'✓ Completed'),e('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!loaded,onClick:()=>complete(c)},busy===c?'Saving…':done[c]?'Send another update':'Send check-in / memo')))),
     e('div',{className:'grant-reminder-actions'},e('select',{'aria-label':'Choose grant project',value:selected,onChange:event=>setSelected(event.target.value)},e('option',{value:''},'All grants / general update'),grantProjects.map(p=>e('option',{key:p.id,value:p.id},p.title||p.meta?.title))),e('button',{className:'btn btn-gold btn-sm',disabled:!selected,onClick:()=>onOpen(selected)},'Open project')),
     e('label',{className:'grant-memo-label'},'Memo to leadership',e('textarea',{value:note,onChange:event=>setNote(event.target.value),placeholder:'Type grant updates, upcoming dates, questions or items needing attention…',rows:4,maxLength:10000,disabled:!!busy,'aria-label':'Grant update memo'})),
     e('label',{className:'grant-no-updates'},e('input',{type:'checkbox',checked:noUpdates,onChange:event=>setNoUpdates(event.target.checked),disabled:!!busy}),'There are no updates at this time.'),
     sent&&e('p',{className:'doc-approved',role:'status'},sent),
-    e('p',{className:'docs-lf-hint'},'Daily reminders reset each day; weekly reminders reset Monday, using Central time. Check-in completion does not mark project milestones complete.'),error&&e('div',{className:'docs-err',role:'alert'},error));
+    e('p',{className:'docs-lf-hint'},'Daily reminders reset each day; weekly reminders reset Monday, using Central time. Check-in completion does not mark project milestones complete.'),error&&e('div',{className:'docs-err',role:'alert'},error,
+      !loaded&&e('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:()=>setReload(value=>value+1)},'Retry reminders')));
 }
 
 function GrantUpdateInbox({profile,onOpen}) {

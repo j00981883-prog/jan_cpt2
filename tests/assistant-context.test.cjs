@@ -6,7 +6,8 @@ test('AI evidence uses full FAA milestones, funding gaps and missing-progress wa
  const p={id:'p1',title:'Lights',meta:{totalBudget:100,funding:[{source:'FAA',amount:75}]},sched:{startISO:'2026-09-01',days:10},grant_info:{milestones:{'Application Submitted':true}}};
  const facts=projectEvidence(p,[],[],[{project_id:'p1',label:'Unattached plan'}],[],'2026-10-21');
  assert.equal(facts.grantSections[0].total,35);
- // Frontend currently preserves legacy flat maps as-is. Do not invent extra completed items.
+ // Legacy flat checks use the same migration as the visible checklist.
+ assert.equal(facts.grantSections[0].completed,1);
  assert.equal(grantSections(p.grant_info)[0].items.length,35);
  assert.equal(facts.calculations.costVariance,null);
  assert.ok(facts.warnings.some(w=>w.includes('No weekly actuals')));

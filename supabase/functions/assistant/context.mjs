@@ -69,7 +69,7 @@ function currentFaaSection(section) {
   const completionDates = { ...(section.completionDates || {}) };
   Object.entries(LEGACY_FAA_MILESTONES).forEach(([oldName, newName]) => {
     if (done[oldName] && done[newName] == null) done[newName] = true;
-    if (completionDates[oldName] && !completionDates[newName]) completionDates[newName] = completionDates[oldName];
+    if (completionDates[oldName] && completionDates[newName] == null) completionDates[newName] = completionDates[oldName];
   });
   return { ...section, items: GRANT_MILESTONES, done, completionDates };
 }
@@ -77,9 +77,11 @@ function currentFaaSection(section) {
 // Older projects stored a single flat { milestones: {...} } map. Convert that to
 // one FAA section so nothing already entered is lost.
 function grantSections(grant) {
-  if (grant && Array.isArray(grant.sections) && grant.sections.length) return grant.sections.map(currentFaaSection);
+  // An explicit empty list means the user removed the grants; only older data
+  // without a sections array needs the legacy default.
+  if (grant && Array.isArray(grant.sections)) return grant.sections.map(currentFaaSection);
   const legacy = grant && grant.milestones || {};
-  return [{
+  return [currentFaaSection({
     id: "faa-1",
     name: "FAA AIG Grant Administration",
     type: "FAA AIG",
@@ -88,7 +90,7 @@ function grantSections(grant) {
     completionDates: grant && grant.milestoneDates || {},
     grantNo: "",
     popEnd: ""
-  }];
+  })];
 }
 
 // "Quarterly Reports Submitted" expands into four separate checkboxes so each
@@ -181,7 +183,8 @@ export function projectEvidence(p,weekly,payapps,documents,sharepoint,today) {
   const legacyDocs=Object.entries(grant.docs||{}).flatMap(([name,value])=>(Array.isArray(value)?value:[value]).flatMap((url,index)=>typeof url==='string'&&/^https?:\/\//i.test(url.trim())?[{name:name+(index?' ('+(index+1)+')':''),url:url.trim(),readableInApp:false,contentAvailable:false}]:[]));
   const sp=sharepoint.filter(d=>d.project_id===p.id);
   const warnings=[];
-  if(!grant.sections?.length&&!Object.keys(grant.milestones||{}).length)warnings.push('No saved grant checklist entries. The default checklist is a template; grant applicability and status have not been verified.');
+  if(Array.isArray(grant.sections)&&grant.sections.length===0)warnings.push('No grants configured for this project. Do not infer grant applicability or noncompliance from an empty checklist.');
+  else if(!grant.sections?.length&&!Object.keys(grant.milestones||{}).length)warnings.push('No saved grant checklist entries. The default checklist is a template; grant applicability and status have not been verified.');
   if(total===null)warnings.push('No usable project budget recorded. The budget is unknown, not zero.');
   else if(number(meta.totalBudget)===null)warnings.push('Budget falls back to the recorded prime contract amount; a separate engineering budget may not be included.');
   if(days===null)warnings.push('No usable schedule duration recorded. Cost variance cannot be verified from the calendar.');
