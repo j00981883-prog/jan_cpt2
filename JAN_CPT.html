@@ -59,7 +59,7 @@ window.addEventListener("error", function (e) {
   onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./grant-reminders.js?v=sharepoint-folders-3"></script>
-<script src="./presentation-tour.js?v=1"></script>
+<script src="./presentation-tour.js?v=20261103"></script>
 <script>
 const {
   useState,
@@ -639,8 +639,9 @@ function CountUp({
   compact,
   pct
 }) {
-  const [d, setD] = useState(0);
-  const prev = React.useRef(0);
+  // Show the real figure on first paint; animate subsequent changes only.
+  const [d, setD] = useState(Number(value) || 0);
+  const prev = React.useRef(Number(value) || 0);
   useEffect(() => {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
       setD(value);
@@ -654,7 +655,9 @@ function CountUp({
     const step = t => {
       const k = Math.min((t - t0) / 700, 1),
         e = 1 - Math.pow(1 - k, 3);
-      setD(from + (to - from) * e);
+      const next = from + (to - from) * e;
+      prev.current = next;
+      setD(next);
       if (k < 1) raf = requestAnimationFrame(step);else prev.current = to;
     };
     raf = requestAnimationFrame(step);
@@ -855,6 +858,41 @@ function SCurve({
 }
 
 /* ================= main ================= */
+function createProjectSaveQueue(save, onStatus) {
+  let revision=0, savedRevision=0, snapshot=null, timer=null, worker=null;
+  const status = message => onStatus?.(message);
+  const cancelTimer = () => { if(timer!==null)clearTimeout(timer);timer=null; };
+  function flush() {
+    cancelTimer();
+    if(worker)return worker;
+    if(savedRevision===revision)return Promise.resolve();
+    // Keep the underlying request in flight even if the UI times out. A retry
+    // must wait for it rather than let an older save overwrite a newer one.
+    worker=Promise.resolve().then(async()=>{
+      while(savedRevision<revision){
+        const writing=revision, next=snapshot;
+        status("Saving…");
+        const result=await save(next);
+        if(!result.ok)throw new Error(result.error || "Cloud save failed");
+        savedRevision=writing;
+      }
+      status("✓ Saved to cloud");
+    }).catch(error=>{status("Save failed — "+(error.message || "Please try again"));throw error;})
+      .finally(()=>{worker=null;});
+    return worker;
+  }
+  async function flushWithFeedback() {
+    try { await requestWithTimeout(flush(), "Cloud save"); }
+    catch(error){status("Save failed — "+(error.message || "Please try again"));throw error;}
+  }
+  return {
+    schedule(next){snapshot=next;revision++;cancelTimer();status("Unsaved changes");timer=setTimeout(()=>{flushWithFeedback().catch(()=>{});},700);},
+    flush:flushWithFeedback,
+    hasPending:()=>savedRevision<revision,
+    detach(){onStatus=null;cancelTimer();if(savedRevision<revision)flush().catch(()=>{});}
+  };
+}
+
 function Tracker({
   projectId,
   initial,
@@ -868,6 +906,7 @@ function Tracker({
   const [actuals, setActuals] = useState(initial.actuals || {});
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("");
+  const [leavingProject, setLeavingProject] = useState(false);
   const [tutorial, setTutorial] = useState(null);
   const [learn, setLearn] = useState(null);
   const [toast, setToast] = useState(null);
@@ -931,7 +970,7 @@ function Tracker({
       daysFY1,
       daysFY2: days - daysFY1
     };
-  }, [sched]);
+  }, [sched, meta.totalBudget]);
 
   // Data arrives already loaded from the database via props.
   useEffect(() => {
@@ -943,7 +982,10 @@ function Tracker({
     setLoaded(true);
   }, []);
 
-  // Debounced save to the shared cloud database. Viewers never write.
+  // Debounced, serialized saves. Back waits for the latest complete snapshot.
+  const saveQueue = React.useRef(null);
+  if(!saveQueue.current)saveQueue.current=createProjectSaveQueue(
+    data=>window.JMAA_CLOUD.saveProject(projectId,data),setSaveState);
   const firstSave = React.useRef(true);
   useEffect(() => {
     if (!loaded) return;
@@ -952,25 +994,20 @@ function Tracker({
       return;
     } // don't re-save what we just loaded
     if (!isEditor) return;
-    const t = setTimeout(async () => {
-      setSaveState("Saving…");
-      try {
-        const res = await requestWithTimeout(window.JMAA_CLOUD.saveProject(projectId, {
-          actuals,
-          grant,
-          payApps,
-          sched,
-          meta
-        }), "Cloud save");
-        if (!res.ok) throw new Error(res.error || "Cloud save failed");
-        setSaveState("✓ Saved to cloud");
-        setTimeout(() => setSaveState(""), 1800);
-      } catch (error) {
-        setSaveState("Save failed — " + (error.message || "Please try again"));
-      }
-    }, 700);
-    return () => clearTimeout(t);
+    saveQueue.current.schedule({actuals,grant,payApps,sched,meta});
   }, [actuals, grant, payApps, sched, meta, loaded, isEditor, projectId]);
+  useEffect(()=>{
+    const warn=event=>{if(saveQueue.current.hasPending()){event.preventDefault();event.returnValue="";}};
+    window.addEventListener("beforeunload",warn);
+    return()=>{window.removeEventListener("beforeunload",warn);saveQueue.current.detach();};
+  },[]);
+  async function leaveProject(){
+    if(leavingProject)return;
+    setLeavingProject(true);
+    try{if(isEditor)await saveQueue.current.flush();onBack();}
+    catch(error){setLeavingProject(false);}
+  }
+  async function retrySave(){try{await saveQueue.current.flush();}catch(error){/* Status retains the retry action. */}}
   useEffect(() => {
     try {
       document.title = meta.title + " — JAN CPT";
@@ -1447,7 +1484,7 @@ function Tracker({
       const retainage = work * retPct;
       const netPayable = work - retainage;
       const expectedReimb = netPayable * share;
-      const reimbAmt = p.reimbReceived ? Number(p.reimbAmount) || expectedReimb : 0;
+      const reimbAmt = p.reimbReceived ? (p.reimbAmount === "" || p.reimbAmount == null ? expectedReimb : Number(p.reimbAmount) || 0) : 0;
       cumWork += work;
       cumRet += retainage;
       if (p.paid) cumPaid += netPayable;
@@ -1514,7 +1551,7 @@ function Tracker({
     // changed the progress count but left this light permanently red.
     const sectionIsExecuted = sec => {
       const items = expandItems(sec.items);
-      const executedItem = items.find(m => /^grant executed$/i.test(m));
+      const executedItem = items.find(m => /^(grant executed|executed grant agreement)$/i.test(m));
       return executedItem ? !!sec.done?.[executedItem] : items.length > 0 && items.every(m => sec.done?.[m]);
     };
     const grantsExecuted = secs.filter(sectionIsExecuted).length;
@@ -1615,8 +1652,9 @@ function Tracker({
     className: "hdr-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-tutorial btn-back",
-    onClick: onBack
-  }, "← All Projects"), /*#__PURE__*/React.createElement("button", {
+    onClick: leaveProject,
+    disabled: leavingProject
+  }, leavingProject ? "Saving…" : "← All Projects"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-tutorial btn-learn",
     onClick: () => setLearn(0)
   }, "Learn"), /*#__PURE__*/React.createElement("button", {
@@ -1641,8 +1679,8 @@ function Tracker({
       e.target.value = "";
     }
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "save-chip"
-  }, isEditor ? saveState : "View only"))), /*#__PURE__*/React.createElement("nav", {
+    className: "save-chip", role:"status"
+  }, isEditor ? saveState : "View only", isEditor && saveState.startsWith("Save failed") && React.createElement("button",{className:"btn btn-tutorial btn-xs",onClick:retrySave},"Retry save")))), /*#__PURE__*/React.createElement("nav", {
     className: "tabs"
   }, [["dashboard", "Dashboard"], ["log", "Weekly Log"], ["pay", "Pay Applications"], ["grant", "Grant & Compliance"], ["contracts", "Contracts & Funding"], ["docs", "Documents"], ["memo", "Board Memo"]].map(([k, l]) => /*#__PURE__*/React.createElement("button", {
     key: k,
@@ -1736,8 +1774,9 @@ function Tracker({
     tab: tab
   }), /*#__PURE__*/React.createElement("button", {
     className: "mobile-project-nav",
-    onClick: onBack
-  }, "← All Projects"), toast && /*#__PURE__*/React.createElement("div", {
+    onClick: leaveProject,
+    disabled: leavingProject
+  }, leavingProject ? "Saving…" : "← All Projects"), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast",
     key: toast.key
   }, toast.msg));
@@ -1944,61 +1983,74 @@ function LastWalkthrough({ projectId }) {
     React.createElement(WalkthroughGallery, { key: projectId, projectId }));
 }
 
+function munisPreviewRows(run) {
+  try {
+    const rows = typeof run?.preview === "string" ? JSON.parse(run.preview) : run?.preview;
+    return Array.isArray(rows) ? rows.filter(row => row && typeof row === "object") : [];
+  } catch (_) { return []; }
+}
 function MunisUpdateStatus({ projectId = null, portfolio = false }) {
-  const [runs, setRuns] = useState(null);
+  const [run, setRun] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
   useEffect(() => {
-    let active = true;
-    if (!sb) { setRuns([]); return () => { active = false; }; }
-    sb.from("munis_sync_runs")
-      .select("id,report_name,source,status,report_date,row_count,matched_count,change_count,preview,created_at")
-      .order("created_at", { ascending: false })
-      .limit(8)
-      .then(({ data }) => { if (active) setRuns(data || []); });
-    return () => { active = false; };
-  }, [projectId]);
-  const previewRows = run => {
-    if (!run) return [];
-    if (Array.isArray(run.preview)) return run.preview;
-    try { return JSON.parse(run.preview || "[]"); } catch (_) { return []; }
-  };
-  const relevant = (runs || []).filter(run => !projectId || previewRows(run).some(row => row.projectId === projectId));
-  const latest = relevant[0];
-  const changes = latest ? previewRows(latest).filter(row => (!projectId || row.projectId === projectId) && (row.budgetChanged || (Array.isArray(row.changes) && row.changes.length))) : [];
-  const stamp = latest && latest.created_at ? new Date(latest.created_at) : null;
-  const applied = latest && latest.status === "applied";
-  return /*#__PURE__*/React.createElement("section", {
-    className: "munis-status-card" + (portfolio ? " munis-status-portfolio" : "")
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-head"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-icon",
-    "aria-hidden": "true"
-  }, "M"), /*#__PURE__*/React.createElement("span", {
-    className: "munis-status-dot " + (latest ? applied ? "is-live" : "is-preview" : "is-waiting")
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-title"
-  }, /*#__PURE__*/React.createElement("b", null, "MUNIS updates"), /*#__PURE__*/React.createElement("small", null, "Automatic financial activity"))), latest && /*#__PURE__*/React.createElement("span", {
-    className: "munis-status-state " + (applied ? "is-live" : "is-preview")
-  }, applied ? "Updated" : latest.status === "error" ? "Error" : "Preview only")), runs === null ? /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-empty"
-  }, "Checking the latest MUNIS update…") : !latest ? /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-empty"
-  }, "No MUNIS update has been recorded yet. The date, time and financial changes will appear here after the first automated import.") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-meta"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, applied ? "Last automatic update" : "Last report preview"), /*#__PURE__*/React.createElement("b", null, stamp && !isNaN(stamp) ? stamp.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "Date unavailable")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "Report"), /*#__PURE__*/React.createElement("b", null, latest.report_name || "MUNIS CSV")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "Results"), /*#__PURE__*/React.createElement("b", null, `${latest.matched_count || 0}/${latest.row_count || 0} matched · ${latest.change_count || 0} changes`))), /*#__PURE__*/React.createElement("div", {
-    className: "munis-change-title"
-  }, "What changed"), changes.length ? /*#__PURE__*/React.createElement("div", {
-    className: "munis-change-list"
-  }, changes.slice(0, 5).map((row, i) => /*#__PURE__*/React.createElement("div", {
-    className: "munis-change-row",
-    key: (row.projectId || row.projectNo || "row") + i
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, row.dashboardTitle || row.title || row.projectNo || "Project"), /*#__PURE__*/React.createElement("span", null, "Prime contract budget")), /*#__PURE__*/React.createElement("div", {
-    className: "munis-change-values"
-  }, /*#__PURE__*/React.createElement("span", null, fmtMoney(Number(row.currentBudget) || 0)), /*#__PURE__*/React.createElement("em", null, "→"), /*#__PURE__*/React.createElement("b", null, fmtMoney(Number(row.budget) || 0)))))) : /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-empty munis-status-good"
-  }, "No financial amounts changed in this report."), changes.length > 5 && /*#__PURE__*/React.createElement("div", {
-    className: "munis-status-more"
-  }, `+ ${changes.length - 5} more changes`)));
+    let active = true, pending = false;
+    setRun(null); setLoading(true); setError("");
+    async function load() {
+      if (pending) return;
+      pending = true;
+      try {
+        if (!sb) throw new Error("MUNIS reports are unavailable.");
+        let query = sb.from("munis_sync_runs")
+          .select("id,report_name,source,status,report_date,row_count,matched_count,change_count,preview,created_at");
+        // Filter before limiting: other projects' newer reports must not hide this project's latest report.
+        if (projectId) query = query.contains("preview", [{projectId}]);
+        const {data, error} = await requestWithTimeout(query.order("created_at", {ascending:false}).limit(1), "Loading MUNIS reports");
+        if (error) throw error;
+        if (active) { setRun(data?.[0] || null); setError(""); }
+      } catch (e) { if (active) setError("Couldn't check MUNIS reports. Try Refresh."); }
+      finally { pending = false; if (active) setLoading(false); }
+    }
+    load();
+    const timer = setInterval(load, 60000);
+    return () => { active = false; clearInterval(timer); };
+  }, [projectId, refresh]);
+  const e = React.createElement;
+  const rows = munisPreviewRows(run).filter(row => !projectId || row.projectId === projectId);
+  const changes = rows.filter(row => row.budgetChanged);
+  const applied = run?.status === "applied";
+  const status = loading ? "Checking" : error ? "Unavailable" : !run ? "Waiting for report" :
+    ({preview:"Preview only", approved:"Approved · not applied", rejected:"Not applied", error:"Needs attention", applied:"Updated"}[run.status] || "Not applied");
+  const stateClass = error || run?.status === "error" ? "is-error" : applied ? "is-live" : "is-preview";
+  const stamp = run?.created_at ? new Date(run.created_at) : null;
+  const date = stamp && !isNaN(stamp) ? stamp.toLocaleString("en-US", {timeZone:"America/Chicago", month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}) + " CT" : "Date unavailable";
+  const summary = !run ? (projectId ? "No report has matched this project yet." : "No report received yet.") :
+    run.status === "error" ? "The report could not be processed. Review it before using its figures." :
+    applied ? (changes.length ? changes.length + " budget change" + (changes.length === 1 ? "" : "s") + " applied." : "Report marked as applied. See details below.") :
+    run.status === "rejected" ? "This report was not applied." :
+    changes.length ? changes.length + " proposed budget change" + (changes.length === 1 ? "" : "s") + ". Project amounts have not changed." :
+    !projectId && !run.matched_count ? "No matching projects. Project amounts have not changed." :
+    "No budget differences found. Project amounts have not changed.";
+  return e("section", {className:"munis-status-card munis-simple" + (portfolio ? " munis-status-portfolio" : ""), "aria-label":"MUNIS updates"},
+    e("div", {className:"munis-status-head"},
+      e("div", null, e("div", {className:"munis-status-title"}, e("b", null, "MUNIS updates"))),
+      e("span", {className:"munis-status-state " + stateClass}, status)),
+    e("p", {className:"munis-summary", role:error ? "alert" : "status"}, loading ? "Checking the latest report…" : error || summary),
+    !loading && run && e("p", {className:"munis-last-report"}, "Last report received: ", e("strong", null, date)),
+    e("div", {className:"munis-simple-actions"},
+      e("button", {type:"button",className:"btn btn-ghost btn-xs",disabled:loading,onClick:()=>setRefresh(n=>n+1)}, "Refresh")),
+    run && !loading && e("details", {className:"munis-details"}, e("summary", null, "Report details"),
+      e("p", null, run.report_name || "MUNIS CSV"),
+      e("p", {className:"munis-last-report"}, projectId ? rows.length + " matching row(s) for this project" : (run.matched_count || 0) + " of " + (run.row_count || 0) + " report rows matched"),
+      e("h3", {className:"munis-change-title"}, applied ? "Applied budget changes" : "Proposed budget changes"),
+      changes.length ? e("div", {className:"munis-change-list"}, changes.map((row, i) =>
+        e("div", {className:"munis-change-row",key:(row.projectId || "row") + i},
+          e("div", null,e("b", null,row.dashboardTitle || row.title || row.projectNo || "Project"),e("span", null,"Prime contract budget")),
+          e("div", {className:"munis-change-values"},e("span", null, row.currentBudget == null ? "Not available" : fmtMoney(Number(row.currentBudget))),
+            e("em", null,"→"),e("b", null,row.budget == null ? "Not available" : fmtMoney(Number(row.budget))))))) :
+        e("p", {className:"munis-status-empty"}, "No budget differences listed."),
+      !applied && e("p", {className:"munis-last-report"}, "Preview only. Automatic changes to project finances are not enabled.")));
 }
 
 function Dashboard({
@@ -2050,7 +2102,7 @@ function Dashboard({
     value: current.weeksComplete
   }), /*#__PURE__*/React.createElement("span", {
     className: "of"
-  }, " / 10")), /*#__PURE__*/React.createElement("div", {
+  }, " / ", cal.nWeeks)), /*#__PURE__*/React.createElement("div", {
     className: "kpi-l"
   }, "Weeks logged")), /*#__PURE__*/React.createElement("div", {
     className: "kpi rise",
@@ -4253,6 +4305,16 @@ main{max-width:1080px;margin:0 auto}
 .cloud-role-ed{background:#F2A900;color:#071A33}
 .cloud-signout{cursor:pointer;opacity:.85;font-weight:600;color:#fff}
 .cloud-signout:hover{opacity:1}
+@media(max-width:760px){
+  .cloud-hdr{padding:15px 18px}
+  .cloud-hdr-left{min-width:0;max-width:100%}
+  .cloud-hdr-left>div{min-width:0;overflow-wrap:anywhere}
+  .cloud-hdr-right{width:100%;min-width:0;max-width:100%;flex-wrap:wrap;gap:8px 14px}
+  .cloud-hdr-right .cloud-user{max-width:100%;overflow-wrap:anywhere}
+  .cloud-hdr-right .cloud-signout{display:inline-flex;align-items:center;min-height:36px;max-width:100%;white-space:normal}
+  .cloud-bar-actions{max-width:100%;flex-wrap:wrap}
+  .cloud-main .cloud-grid{grid-template-columns:minmax(0,1fr)}
+}
 .cloud-main{max-width:1180px;margin:0 auto;padding:26px 26px 70px}
 .cloud-bar{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
 .cloud-bar-actions{display:flex;gap:10px;animation:cloudToolsIn .5s ease .16s both}
@@ -4337,7 +4399,8 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .munis-run{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #E8EFF4;font-size:12px;color:#40576B}
 .munis-run:first-of-type{border-top:0}.munis-run b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#18334C}
 .munis-row code{overflow:hidden;text-overflow:ellipsis;color:#18334C}.munis-ok{color:#2E7D52;font-weight:800}.munis-warn{color:#A56B12;font-weight:800}
-.munis-status-card{position:relative;overflow:hidden;margin:16px 0;padding:19px 20px;border:1px solid #D3E2ED;border-radius:15px;background:linear-gradient(135deg,#fff 0%,#F1F8FC 100%);box-shadow:0 9px 28px rgba(11,61,110,.09);animation:cloudStatusIn .55s cubic-bezier(.2,.8,.3,1) .2s both}
+.munis-status-card{position:relative;overflow:hidden;margin:16px 0;padding:19px 20px;border:1px solid #D3E2ED;border-radius:15px;background:#fff;box-shadow:0 3px 12px rgba(11,61,110,.04)}
+.munis-simple::before,.munis-simple::after{display:none}.munis-simple .munis-status-head{margin-bottom:8px;flex-wrap:wrap}.munis-summary{margin:0;color:#40576B;font-size:14px;line-height:1.5}.munis-last-report{color:#718699;font-size:12px;line-height:1.5;margin:8px 0;overflow-wrap:anywhere}.munis-last-report strong{font-weight:500;color:#40576B}.munis-simple-actions{display:flex;justify-content:flex-end}.munis-details{margin-top:8px;border-top:1px solid #E0EAF1;padding-top:10px;font-size:13px;color:#40576B;overflow-wrap:anywhere}.munis-details summary{cursor:pointer;color:#0B3D6E;font-weight:700;padding:5px 0}.munis-details summary:focus-visible{outline:2px solid #1479AB;outline-offset:3px}.munis-status-state.is-error{color:#A32626;background:#FBE9E9}
 .munis-status-card::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(180deg,#2E9BD6,#0B3D6E 62%,#F2A900)}
 .munis-status-card::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;right:-92px;top:-108px;background:rgba(46,155,214,.07);pointer-events:none}
 .munis-status-portfolio{margin:18px 0 4px;background:linear-gradient(135deg,#fff,#F5FAFD)}
@@ -5112,7 +5175,7 @@ window.JMAA_CLOUD = {
         meta,
         sched,
         grant_info: grant
-      }).eq("id", projectId);
+      }).eq("id", projectId).select("id").single();
       if (pe) throw pe;
 
       // 2. weekly actuals — upsert every week present, delete any removed
@@ -5132,8 +5195,6 @@ window.JMAA_CLOUD = {
         });
         if (we) throw we;
       }
-      await sb.from("weekly_actuals").delete().eq("project_id", projectId).not("week_no", "in", `(${weeks.length ? weeks.join(",") : "0"})`);
-
       // 3. pay applications — upsert present, delete removed
       const nums = payApps.map(p => Number(p.number)).filter(n => n);
       if (payApps.length) {
@@ -5157,7 +5218,11 @@ window.JMAA_CLOUD = {
         });
         if (pae) throw pae;
       }
-      await sb.from("pay_apps").delete().eq("project_id", projectId).not("number", "in", `(${nums.length ? nums.join(",") : "0"})`);
+      // Apply removals only after every replacement/upsert has succeeded.
+      const { error: weekDeleteError } = await sb.from("weekly_actuals").delete().eq("project_id", projectId).not("week_no", "in", `(${weeks.length ? weeks.join(",") : "0"})`);
+      if (weekDeleteError) throw weekDeleteError;
+      const { error: payDeleteError } = await sb.from("pay_apps").delete().eq("project_id", projectId).not("number", "in", `(${nums.length ? nums.join(",") : "0"})`);
+      if (payDeleteError) throw payDeleteError;
       return {
         ok: true
       };
@@ -5172,13 +5237,12 @@ window.JMAA_CLOUD = {
 
 // pull one project back out of the database in the tracker's own shape
 async function loadProject(projectId) {
-  const [{
-    data: p
-  }, {
-    data: wk
-  }, {
-    data: pa
-  }] = await Promise.all([sb.from("projects").select("*").eq("id", projectId).single(), sb.from("weekly_actuals").select("*").eq("project_id", projectId), sb.from("pay_apps").select("*").eq("project_id", projectId)]);
+  const results = await requestWithTimeout(Promise.all([sb.from("projects").select("*").eq("id", projectId).single(), sb.from("weekly_actuals").select("*").eq("project_id", projectId), sb.from("pay_apps").select("*").eq("project_id", projectId)]), "Opening project");
+  // Never treat a failed child query as an empty collection: saving that
+  // partial snapshot could otherwise remove the existing financial records.
+  for (const result of results) if (result.error) throw new Error(result.error.message || "Project data could not be loaded.");
+  const [{data:p}, {data:wk}, {data:pa}] = results;
+  if (!p) throw new Error("Project not found or access is unavailable.");
   const actuals = {};
   (wk || []).forEach(r => {
     actuals[r.week_no] = {
@@ -5727,7 +5791,7 @@ function ProjectPicker({
   }, /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-ghost",
     onClick: () => setShowMunisDemo(true)
-  }, "MUNIS auto-sync"), /*#__PURE__*/React.createElement("label", {
+  }, "MUNIS reports"), /*#__PURE__*/React.createElement("label", {
     className: "cloud-btn cloud-btn-ghost cloud-file"
   }, "Import .json", /*#__PURE__*/React.createElement("input", {
     type: "file",
@@ -5947,26 +6011,14 @@ function munisKey(value) {
 }
 
 function MunisSyncDemo({ projects, onClose }) {
-  const [source, setSource] = useState("SharePoint / OneDrive");
-  const [schedule, setSchedule] = useState("Every hour");
   const [fileName, setFileName] = useState("");
   const [records, setRecords] = useState([]);
   const [error, setError] = useState("");
-  const [stagedRuns, setStagedRuns] = useState([]);
-  useEffect(() => {
-    let active = true;
-    if (!sb) return () => { active = false; };
-    sb.from("munis_sync_runs").select("id,report_name,row_count,matched_count,change_count,created_at,status")
-      .order("created_at", { ascending: false }).limit(5).then(({ data }) => {
-        if (active && data) setStagedRuns(data);
-      });
-    return () => { active = false; };
-  }, []);
   const projectMap = useMemo(() => {
     const map = new Map();
     projects.forEach(p => {
       const key = munisKey(p.meta?.munisProjectNo || p.meta?.projectNo);
-      if (key && !/^(N\/?A|NONE|NOTAPPLICABLE|-|—)$/.test(key)) map.set(key, p);
+      if (key && !/^(N\/?A|NONE|NOTAPPLICABLE|-|—)$/.test(key)) map.set(key, map.has(key) ? null : p);
     });
     return map;
   }, [projects]);
@@ -6008,29 +6060,12 @@ function MunisSyncDemo({ projects, onClose }) {
     type: "button",
     className: "cloud-modal-close",
     onClick: onClose,
-    "aria-label": "Close MUNIS sync demo"
+    "aria-label": "Close MUNIS reports"
   }, "×"), /*#__PURE__*/React.createElement("h3", {
     className: "cloud-modal-h"
-  }, "MUNIS report sync"), /*#__PURE__*/React.createElement("div", {
+  }, "MUNIS reports"), /*#__PURE__*/React.createElement("div", {
     className: "munis-demo-note"
-  }, /*#__PURE__*/React.createElement("b", null, "Safe preview mode."), " Select a MUNIS CSV to check matches and proposed changes. No project amounts are changed."), /*#__PURE__*/React.createElement("div", {
-    className: "munis-flow"
-  }, [["1", "Receive", "SharePoint syncs the scheduled MUNIS CSV."], ["2", "Validate", "JAN CPT checks required columns and amounts."], ["3", "Match", "Rows match by MUNIS project number."], ["4", "Approve", "An editor reviews before any future update."]].map(s => /*#__PURE__*/React.createElement("div", {
-    className: "munis-step",
-    key: s[0]
-  }, /*#__PURE__*/React.createElement("b", null, s[0], ". ", s[1]), s[2]))), /*#__PURE__*/React.createElement("div", {
-    className: "munis-settings"
-  }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Report delivery"), /*#__PURE__*/React.createElement("select", {
-    value: source,
-    onChange: e => setSource(e.target.value)
-  }, ["SharePoint / OneDrive", "Microsoft 365 mailbox", "Secure SFTP folder"].map(x => /*#__PURE__*/React.createElement("option", {
-    key: x
-  }, x)))), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("span", null, "Schedule"), /*#__PURE__*/React.createElement("select", {
-    value: schedule,
-    onChange: e => setSchedule(e.target.value)
-  }, ["Every hour", "Nightly at 2:00 AM", "Every Monday at 6:00 AM", "Monthly after close"].map(x => /*#__PURE__*/React.createElement("option", {
-    key: x
-  }, x))))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("b", null, "Preview a report."), " Select a MUNIS CSV to check matches and proposed changes. No project amounts are changed."), React.createElement(MunisUpdateStatus, {portfolio:true}), /*#__PURE__*/React.createElement("div", {
     className: "munis-filebar"
   }, /*#__PURE__*/React.createElement("label", {
     className: "cloud-btn cloud-btn-gold munis-file"
@@ -6060,17 +6095,6 @@ function MunisSyncDemo({ projects, onClose }) {
   }, r.project ? r.budgetChanged ? "Change found" : "Matched" : "Needs match"))), rows.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "munis-row"
   }, "The template includes budget, actual spending, encumbrances and available balance.")), /*#__PURE__*/React.createElement("div", {
-    className: "munis-runs"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "munis-runs-h"
-  }, "Automatic folder previews"), stagedRuns.length ? stagedRuns.map(run => /*#__PURE__*/React.createElement("div", {
-    className: "munis-run",
-    key: run.id
-  }, /*#__PURE__*/React.createElement("b", null, run.report_name), /*#__PURE__*/React.createElement("span", null, `${run.matched_count}/${run.row_count} matched`), /*#__PURE__*/React.createElement("span", {
-    className: run.change_count ? "munis-warn" : "munis-ok"
-  }, `${run.change_count} changes`))) : /*#__PURE__*/React.createElement("span", {
-    className: "munis-muted"
-  }, "No staged folder reports yet. The automation remains preview-only.")), /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-ghost",
@@ -7041,14 +7065,15 @@ function Documents({
   async function load() {
     // Order by created_at when it exists; fall back so a missing column can
     // never blank out the list silently.
+    try {
     let {
       data,
       error
-    } = await sb.from("documents").select("*").eq("project_id", projectId).order("created_at", {
+    } = await requestWithTimeout(sb.from("documents").select("*").eq("project_id", projectId).order("created_at", {
       ascending: false
-    });
+    }), "Loading documents");
     if (error) {
-      const retry = await sb.from("documents").select("*").eq("project_id", projectId);
+      const retry = await requestWithTimeout(sb.from("documents").select("*").eq("project_id", projectId), "Loading documents");
       data = retry.data;
       error = retry.error;
     }
@@ -7059,6 +7084,10 @@ function Documents({
     }
     setLoadErr("");
     setDocs(data || []);
+    } catch (error) {
+      setLoadErr(error.message || "Please refresh to try again.");
+      setDocs([]);
+    }
   }
   useEffect(() => {
     setManaging(null); setSearch(""); setControlError("");
@@ -7279,51 +7308,55 @@ function Documents({
   }
 
   async function addLink() {
+    if (busy || !isEditor) return;
     if (!lf.label.trim() || !lf.url.trim()) {
       alert("Name and URL are required.");
       return;
     }
-    if (!/^https?:\/\//i.test(lf.url)) {
+    if (!/^https?:\/\//i.test(lf.url.trim())) {
       alert("Link must start with http:// or https://");
       return;
     }
     setBusy(true);
+    try {
     const {
       error
-    } = await sb.from("documents").insert({
+    } = await requestWithTimeout(sb.from("documents").insert({
       project_id: projectId,
       kind: "link",
       label: lf.label.trim(),
       url: lf.url.trim(),
       category: lf.category
-    });
-    setBusy(false);
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    }), "Adding document link");
+    if (error) throw error;
     setLf({
       label: "",
       url: "",
       category: "General"
     });
     setLinkForm(false);
-    load();
+    await load();
+    } catch (error) {
+      alert((error.message || "The link could not be saved.") + " Refresh the list before retrying.");
+    } finally {
+      setBusy(false);
+    }
   }
   async function remove(d) {
     if (busy || !isEditor) return;
-    if (!confirm(`Archive "${d.label}" and its revisions? Files and history will remain available in the Archived filter.`)) return;
     if (d.legacy) {
-      // lives in the Grant tab's link register
-      setGrant(g => ({
-        ...g,
-        docs: {
-          ...(g.docs || {}),
-          [d.label]: ""
-        }
-      }));
+      if (!confirm(`Remove the link "${d.label}" from project documentation? The original file is unaffected. You can add the link again under Grant & Compliance.`)) return;
+      // Use the original record key/index, not the numbered display label.
+      setGrant(g => {
+        const value = (g.docs || {})[d.legacyName];
+        const links = Array.isArray(value) ? value : [value];
+        if (typeof links[d.legacyIndex] !== "string" || links[d.legacyIndex].trim() !== d.url) return g;
+        const remaining = links.filter((_, index) => index !== d.legacyIndex);
+        return {...g, docs:{...(g.docs || {}), [d.legacyName]: remaining.length > 1 ? remaining : remaining[0] || ""}};
+      });
       return;
     }
+    if (!confirm(`Archive "${d.label}" and its revisions? Files and history will remain available in the Archived filter.`)) return;
     setBusy(true);
     try {
       const { error } = await requestWithTimeout(sb.from("documents").update({ review_status: "archived" }).eq("project_id", projectId).in("id", (d.versions || [d]).map(v => v.id)).select("id"), "Archiving documents");
@@ -7372,14 +7405,17 @@ function Documents({
 
   // Legacy links saved on the Grant & Compliance tab appear here too, so this
   // tab is the single place to see every document for the project.
-  const legacy = Object.entries(grant && grant.docs || {}).filter(([, url]) => /^https?:\/\//i.test(url || "")).map(([name, url]) => ({
-    id: "legacy:" + name,
+  const legacy = Object.entries(grant && grant.docs || {}).flatMap(([name, value]) =>
+    (Array.isArray(value) ? value : [value]).flatMap((url, index) => typeof url === "string" && /^https?:\/\//i.test(url.trim()) ? [{
+    id: "legacy:" + name + ":" + index,
     kind: "link",
-    label: name,
-    url,
+    label: name + (index ? " (" + (index + 1) + ")" : ""),
+    url: url.trim(),
     category: legacyCategory(name),
-    legacy: true
-  }));
+    legacy: true,
+    legacyName: name,
+    legacyIndex: index
+  }] : []));
 
   // group by category
   const groups = {};
@@ -7537,7 +7573,7 @@ function Documents({
     className: "docs-err"
   }, "Couldn't load documents: ", loadErr), docs === null && /*#__PURE__*/React.createElement("div", {
     className: "docs-empty"
-  }, "Loading…"), docs && docs.length === 0 && /*#__PURE__*/React.createElement("div", {
+  }, "Loading…"), docs && docs.length === 0 && !legacy.length && /*#__PURE__*/React.createElement("div", {
     className: "docs-empty"
   }, "No documents yet.", isEditor ? " Upload a file or add a link to get started." : ""), orderedCats.map(cat => /*#__PURE__*/React.createElement("div", {
     key: cat,
@@ -8533,22 +8569,25 @@ function FieldProject({
   const [commentingId, setCommentingId] = useState(null);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   async function load() {
     try {
-      const [ckRes, rpRes, vRes] = await Promise.all([
+      const [ckRes, rpRes, vRes] = await requestWithTimeout(Promise.all([
         sb.from("field_checklist").select("*").eq("project_id", projectId).order("sort_order"),
         sb.from("field_reports").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(20),
         // an unfinished walkthrough by this user — resumed rather than
         // orphaned when the app is closed mid-inspection
-        sb.from("field_visits").select("*").eq("project_id", projectId).is("ended_at", null).order("started_at", { ascending: false }).limit(1)
-      ]);
+        sb.from("field_visits").select("*").eq("project_id", projectId).eq("walker_id", profile.id).is("ended_at", null).order("started_at", { ascending: false }).limit(1)
+      ]), "Loading field project");
+      const error = ckRes.error || rpRes.error || vRes.error;
+      if (error) throw error;
       setItems(ckRes && ckRes.data || []);
       setReports(rpRes && rpRes.data || []);
       setVisit(vRes && vRes.data && vRes.data[0] || null);
+      setLoadError("");
     } catch (e) {
-      setItems([]);
-      setReports([]);
+      setLoadError(e.message || "The field project could not load. Please try again.");
     }
   }
   useEffect(() => {
@@ -8578,23 +8617,27 @@ function FieldProject({
   }
 
   async function endVisit() {
-    if (!visit) return;
+    if (!visit || ending) return;
     setEnding(true);
+    try {
     const total = (items || []).length;
     const done = (items || []).filter(i => i.done).length;
     const notes = (reports || []).filter(r => r.visit_id === visit.id).length;
-    const { error } = await sb.from("field_visits").update({
+    const { error } = await requestWithTimeout(sb.from("field_visits").update({
       ended_at: new Date().toISOString(),
       items_total: total,
       items_done: done,
       note_count: notes
-    }).eq("id", visit.id);
-    if (!error) {
-      setVisit(null);
-      if (tourStep === 7) setTourStep(8);
+    }).eq("id", visit.id).eq("walker_id", profile.id).select("id").single(), "Finishing walkthrough");
+    if (error) throw error;
+    setVisit(null);
+    if (tourStep === 7) setTourStep(8);
+    await load();
+    } catch (error) {
+      alert("The walkthrough could not finish: " + (error.message || error));
+    } finally {
+      setEnding(false);
     }
-    setEnding(false);
-    load();
   }
 
   async function toggle(item) {
@@ -8670,7 +8713,7 @@ function FieldProject({
     className: "field-proj-label"
   }, "Active field project"), /*#__PURE__*/React.createElement("div", {
     className: "field-proj-title"
-  }, project ? project.title : "…")), /*#__PURE__*/React.createElement("div", {
+  }, project ? project.title : "…")), loadError && React.createElement("div", {className:"docs-err",role:"alert"}, loadError, " ", React.createElement("button", {className:"btn btn-ghost btn-sm",onClick:load}, "Retry")), /*#__PURE__*/React.createElement("div", {
     className: "fv-bar" + (visit ? " fv-on" : "")
   }, visit ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "fv-live"
@@ -9106,6 +9149,7 @@ function CloudApp() {
   const [profile, setProfile] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [openData, setOpenData] = useState(null);
+  const [openError, setOpenError] = useState("");
   const [booting, setBooting] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [display, setDisplay] = useState(false); // big-screen wall board
@@ -9182,9 +9226,14 @@ function CloudApp() {
   async function open(id) {
     const request=++openRequest.current;
     setOpenData(null);
+    setOpenError("");
     setOpenId(id);
-    const data=await loadProject(id);
-    if(request===openRequest.current)setOpenData(data);
+    try {
+      const data=await loadProject(id);
+      if(request===openRequest.current)setOpenData(data);
+    } catch(error) {
+      if(request===openRequest.current)setOpenError(error.message || "Project could not be opened. Please try again.");
+    }
   }
   if (!CONFIGURED) return /*#__PURE__*/React.createElement(NotConfigured, null);
   if (BOOT_ERROR) return /*#__PURE__*/React.createElement(BootError, {
@@ -9242,7 +9291,10 @@ function CloudApp() {
     }
   }) : /*#__PURE__*/React.createElement("div", {
     className: "cloud-splash"
-  }, "Opening project…") : /*#__PURE__*/React.createElement(ProjectPicker, {
+  }, openError ? React.createElement("div", {role:"alert"},
+    React.createElement("p", null, openError),
+    React.createElement("button", {className:"btn btn-primary btn-sm", onClick:()=>open(openId)}, "Try again"),
+    React.createElement("button", {className:"btn btn-ghost btn-sm", onClick:()=>{openRequest.current++;setOpenId(null);setOpenData(null);setOpenError("");}}, "All projects")) : "Opening project…") : /*#__PURE__*/React.createElement(ProjectPicker, {
     profile: profile,
     onOpen: open,
     refreshKey: refreshKey,
