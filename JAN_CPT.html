@@ -5619,6 +5619,7 @@ function ProjectPicker({
 }) {
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
+  const newProjectDraft = React.useRef({});
   const [howTo, setHowTo] = useState(null);
   const [projectTab, setProjectTab] = useState("all");
   const [clock, setClock] = useState("");
@@ -5961,9 +5962,11 @@ function ProjectPicker({
       onClick: e => deleteProject(e, p)
     }, "Delete project")));
   }))), creating && /*#__PURE__*/React.createElement(NewProjectModal, {
+    draft: newProjectDraft.current,
     initialCategory: projectTab === "internal" ? "internal" : "capital",
     onClose: () => setCreating(false),
     onDone: category => {
+      newProjectDraft.current = {};
       setCreating(false);
       setProjectTab(category || "all");
       bump();
@@ -6318,12 +6321,50 @@ const FORM_MAP = {
 };
 
 
+// Keep one identity through a lost response: a retry must not create a second
+// project or overwrite a project that the first request already saved.
+async function ensureNewProjectCreated(draft, record) {
+  if (draft.created) return draft.created;
+  if (!draft.record) draft.record = { ...record, id: crypto.randomUUID() };
+  async function run(query, label) {
+    const controller = new AbortController();
+    try {
+      return await requestWithTimeout(query.abortSignal(controller.signal), label);
+    } finally {
+      controller.abort();
+    }
+  }
+  async function findCreated() {
+    const { data, error } = await run(sb.from("projects").select("id").eq("id", draft.record.id).maybeSingle(), "Checking project save");
+    if (error) throw error;
+    return data;
+  }
+  if (draft.attempted) {
+    const existing = await findCreated();
+    if (existing?.id === draft.record.id) return (draft.created = existing);
+  }
+  draft.attempted = true;
+  const { data, error } = await run(sb.from("projects").insert(draft.record).select("id").single(), "Creating project");
+  if (error?.code === "23505") {
+    const existing = await findCreated();
+    if (existing?.id === draft.record.id) return (draft.created = existing);
+  }
+  if (error) throw error;
+  if (data?.id !== draft.record.id) throw new Error("The project save could not be confirmed. Please retry to check it.");
+  draft.created = data;
+  return data;
+}
+
 function NewProjectModal({
+  draft = {},
   initialCategory = "capital",
   onClose,
   onDone
 }) {
-  const [f, setF] = useState({
+  const saveDraft = React.useRef(draft);
+  const savingNow = React.useRef(false);
+  const stopUploads = React.useRef(false);
+  const [f, setF] = useState(() => draft.form || ({
     title: "",
     projectCategory: initialCategory,
     location: "",
@@ -6344,16 +6385,24 @@ function NewProjectModal({
     local: "",
     projectNo: "",
     aipNo: ""
-  });
+  }));
   const [busy, setBusy] = useState(false);
+  const [locked, setLocked] = useState(!!draft.record);
+  const [saveProgress, setSaveProgress] = useState("");
+  const [saveResult, setSaveResult] = useState(draft.result || null);
   const [err, setErr] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [extract, setExtract] = useState(null); // { confidence, notes } from the last read
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
-  const [scan, setScan] = useState(null); // { files, charter, note } from a folder read
+  const [scan, setScan] = useState(draft.scan || null); // { files, charter, note } from a folder read
   const [scanProgress, setScanProgress] = useState(null); // which file is being read now
-  const [registerDocs, setRegisterDocs] = useState(true);
+  const [registerDocs, setRegisterDocs] = useState(draft.registerDocs !== false);
+  function close() {
+    if (savingNow.current) return;
+    if (saveDraft.current.created) onDone(saveDraft.current.record.meta.projectCategory);
+    else onClose();
+  }
   const set = k => e => {
     setF({
       ...f,
@@ -6676,6 +6725,7 @@ function NewProjectModal({
     return c === "low" || c === "medium" ? " np-check" : "";
   };
   async function save() {
+    if (savingNow.current || extracting) return;
     if (!f.title.trim()) {
       setErr("Give the project a title.");
       return;
@@ -6685,7 +6735,11 @@ function NewProjectModal({
       return;
     }
     setBusy(true);
+    savingNow.current = true;
+    stopUploads.current = false;
     setErr("");
+    setSaveProgress(saveDraft.current.attempted ? "Checking whether your project was saved…" : "Creating your project…");
+    try {
     const datedDays = f.startISO && f.targetISO ? Math.max(1, Math.ceil((new Date(f.targetISO + "T12:00:00") - new Date(f.startISO + "T12:00:00")) / 86400000)) : 0;
     const days = f.projectCategory === "internal" ? (datedDays || n(f.days) || 70) : (n(f.days) || 70);
     const prime = n(f.primeBudget),
@@ -6729,10 +6783,12 @@ function NewProjectModal({
       projectNo: f.projectNo.trim(),
       aipNo: f.aipNo.trim()
     };
-    const {
-      data: created,
-      error
-    } = await sb.from("projects").insert({
+    const pending = saveDraft.current;
+    pending.form = f;
+    pending.scan = scan;
+    pending.registerDocs = registerDocs;
+    setLocked(true);
+    const created = await ensureNewProjectCreated(pending, {
       title: meta.title,
       meta,
       sched: {
@@ -6746,25 +6802,25 @@ function NewProjectModal({
         coCount: 0,
         safetyIncidents: 0
       }
-    }).select().single();
-    if (error) {
-      setBusy(false);
-      setErr(error.message);
-      return;
-    }
+    });
 
     // If a folder was scanned, upload the actual files now. Registering names
     // alone produced rows that looked clickable but had nothing behind them.
     if (created && scan && registerDocs && scan.files.length) {
       const failedUploads = [];
+      let uploaded = 0;
+      let unattempted = 0;
       for (let i = 0; i < scan.files.length; i++) {
+        if (stopUploads.current) { unattempted = scan.files.length - i; break; }
         const file = scan.files[i];
+        setSaveProgress(`Project created · Uploading ${i + 1} of ${scan.files.length}: ${file.name}`);
         try {
           const safe = file.name.replace(/[^\w.\-]+/g, "_");
           const path = `${created.id}/${Date.now()}_${i}_${safe}`;
-          const { error: upErr } = await sb.storage.from("project-docs").upload(path, file);
+          const { error: upErr } = await requestWithTimeout(sb.storage.from("project-docs").upload(path, file), "Uploading " + file.name, 60000);
           if (upErr) throw upErr;
-          const { error: docErr } = await sb.from("documents").insert({
+          setSaveProgress(`Project created · Registering ${i + 1} of ${scan.files.length}: ${file.name}`);
+          const { error: docErr } = await requestWithTimeout(sb.from("documents").insert({
             project_id: created.id,
             kind: "file",
             label: file.name,
@@ -6773,38 +6829,55 @@ function NewProjectModal({
             size_bytes: file.size,
             url: "",
             category: docCategory(file.name, file.webkitRelativePath || file.__path)
-          });
+          }), "Registering " + file.name);
           if (docErr) {
-            await sb.storage.from("project-docs").remove([path]);
+            // A lost response can arrive as a returned network error too.
+            // Keep the uploaded file: registration may already have committed.
             throw docErr;
           }
+          uploaded++;
         } catch (e) {
           failedUploads.push(`${file.name}: ${e.message || e}`);
+          // A stalled connection should not incur another timeout per file.
+          if (/timed out|failed to fetch|network|abort/i.test(e.message || String(e))) {
+            unattempted = scan.files.length - i - 1;
+            break;
+          }
         }
       }
-      if (failedUploads.length) {
-        alert(`${scan.files.length - failedUploads.length} of ${scan.files.length} files uploaded. ` +
-          `${failedUploads.length} failed and can be added later from Documents.\n\n` +
-          failedUploads.slice(0, 5).join("\n"));
+      if (failedUploads.length || unattempted) {
+        pending.result = { uploaded, total: scan.files.length, failed: failedUploads, unattempted };
+        setSaveResult(pending.result);
+        return;
       }
     }
-    setBusy(false);
-    onDone(f.projectCategory);
+    onDone(pending.record.meta.projectCategory);
+    } catch (e) {
+      setErr((e.message || String(e)) + " Your entries are still here. Retry checks the existing save before creating anything.");
+    } finally {
+      savingNow.current = false;
+      setBusy(false);
+      setSaveProgress("");
+    }
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-bg",
-    onClick: onClose
+    onClick: close
   }, /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal",
     onClick: e => e.stopPropagation()
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "cloud-modal-close",
-    onClick: onClose,
+    onClick: close,
+    disabled: busy,
     "aria-label": "Close new project"
   }, "×"), /*#__PURE__*/React.createElement("h3", {
     className: "cloud-modal-h"
-  }, "New project"), /*#__PURE__*/React.createElement("label", {
+  }, "New project"), /*#__PURE__*/React.createElement("fieldset", {
+    disabled: busy || locked,
+    style: { border: 0, padding: 0, margin: 0, minWidth: 0 }
+  }, /*#__PURE__*/React.createElement("label", {
     className: "cloud-f"
   }, /*#__PURE__*/React.createElement("span", null, "Project type"), /*#__PURE__*/React.createElement("select", {
     value: f.projectCategory,
@@ -7043,18 +7116,32 @@ function NewProjectModal({
     value: f.local,
     onChange: set("local"),
     inputMode: "decimal"
-  })))), err && /*#__PURE__*/React.createElement("div", {
-    className: "cloud-msg"
+  }))))), saveProgress && /*#__PURE__*/React.createElement("div", {
+    className: "np-progress", role: "status", "aria-live": "polite"
+  }, saveProgress, saveDraft.current.created && /*#__PURE__*/React.createElement("button", {
+    type: "button", className: "cloud-btn cloud-btn-ghost", style: { marginTop: 10 },
+    onClick: () => { stopUploads.current = true; setSaveProgress("Finishing the current file; remaining files can be added in Documents…"); }
+  }, "Finish after this file")), saveResult && /*#__PURE__*/React.createElement("div", {
+    className: "np-scan", role: "status"
+  }, /*#__PURE__*/React.createElement("b", null, "Your project was created."),
+    /*#__PURE__*/React.createElement("p", null, `${saveResult.uploaded} of ${saveResult.total} files confirmed. Open Documents to check the files and add any that are missing.`),
+    saveResult.unattempted > 0 && /*#__PURE__*/React.createElement("p", null, `${saveResult.unattempted} files have not been uploaded yet.`),
+    saveResult.failed.length > 0 && /*#__PURE__*/React.createElement("details", null,
+      /*#__PURE__*/React.createElement("summary", null, "Files to check"),
+      /*#__PURE__*/React.createElement("ul", null, saveResult.failed.map((message, i) => /*#__PURE__*/React.createElement("li", { key: i }, message))))),
+  err && /*#__PURE__*/React.createElement("div", {
+    className: "cloud-msg", role: "alert"
   }, err), /*#__PURE__*/React.createElement("div", {
     className: "cloud-modal-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-gold",
-    onClick: save,
-    disabled: busy
-  }, busy ? "Saving…" : "Create project"), /*#__PURE__*/React.createElement("button", {
+    onClick: saveResult ? close : save,
+    disabled: busy || extracting
+  }, busy ? (saveDraft.current.created ? "Uploading files…" : "Saving…") : saveResult ? "View projects" : locked ? "Retry save" : "Create project"), /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-ghost",
-    onClick: onClose
-  }, "Cancel"))));
+    onClick: close,
+    disabled: busy
+  }, saveResult ? "Close" : locked ? "Close for now" : "Cancel"))));
 }
 
 // ---------------------------------------------------------------------------
