@@ -5620,6 +5620,8 @@ function ProjectPicker({
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
   const newProjectDraft = React.useRef({});
+  const deletingProject = React.useRef(false);
+  const [deletingProjectId, setDeletingProjectId] = useState(null);
   const [howTo, setHowTo] = useState(null);
   const [projectTab, setProjectTab] = useState("all");
   const [clock, setClock] = useState("");
@@ -5722,32 +5724,35 @@ function ProjectPicker({
   }
   async function deleteProject(e, project) {
     e.stopPropagation();
-    if (!isEditor) return;
+    if (!isEditor || deletingProject.current) return;
     const password = prompt('Enter the deletion password for "' + project.title + '":');
     if (password === null) return;
     if (password !== DELETE_PASSWORD) {
       alert("Incorrect deletion password. The project was not deleted.");
       return;
     }
-    if (!confirm('Permanently delete "' + project.title + '" and all of its records? This cannot be undone.')) return;
+    if (!confirm('Permanently delete "' + project.title + '" from JAN CPT, including its project records and document history? This cannot be undone. Uploaded files and SharePoint originals will not be deleted.')) return;
+    deletingProject.current = true;
+    setDeletingProjectId(project.id);
+    const controller = new AbortController();
     try {
-      const { data: visits, error: visitLookupError } = await sb.from("field_visits").select("id").eq("project_id", project.id);
-      if (visitLookupError) throw visitLookupError;
-      const visitIds = (visits || []).map(v => v.id);
-      if (visitIds.length) {
-        const { error } = await sb.from("field_visit_items").delete().in("visit_id", visitIds);
-        if (error) throw error;
-      }
-      for (const table of ["field_reports", "field_checklist", "field_visits", "documents", "pay_apps", "weekly_actuals"]) {
-        const { error } = await sb.from(table).delete().eq("project_id", project.id);
-        if (error) throw error;
-      }
-      const { error } = await sb.from("projects").delete().eq("id", project.id);
+      // The database cascades this one statement atomically. Deleting documents
+      // first trips their archive safeguard and can leave other records missing.
+      const { data, error } = await requestWithTimeout(sb.from("projects").delete()
+        .eq("id", project.id).select("id").abortSignal(controller.signal), "Deleting project");
       if (error) throw error;
+      if (!Array.isArray(data) || data.length !== 1 || data[0].id !== project.id) {
+        throw new Error("No project deletion was confirmed. It may already be removed, or your edit access may have changed.");
+      }
       setProjects(list => (list || []).filter(p => p.id !== project.id));
       alert('Project "' + project.title + '" was deleted.');
     } catch (error) {
-      alert("Couldn't delete the project: " + (error.message || error));
+      bump();
+      alert("Couldn't confirm the project deletion: " + (error.message || error) + " Refreshing the project list; check whether it is still there before retrying.");
+    } finally {
+      controller.abort();
+      deletingProject.current = false;
+      setDeletingProjectId(null);
     }
   }
   const counts = (projects || []).reduce((a, p) => {
@@ -5959,8 +5964,9 @@ function ProjectPicker({
         borderColor: "#F4C7C3"
       },
       title: "Delete this project",
+      disabled: !!deletingProjectId,
       onClick: e => deleteProject(e, p)
-    }, "Delete project")));
+    }, deletingProjectId === p.id ? "Deleting…" : "Delete project")));
   }))), creating && /*#__PURE__*/React.createElement(NewProjectModal, {
     draft: newProjectDraft.current,
     initialCategory: projectTab === "internal" ? "internal" : "capital",
