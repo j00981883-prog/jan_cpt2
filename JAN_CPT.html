@@ -7957,8 +7957,14 @@ function directEditPlan(text) {
 // AI_VALIDATION_END
 
 function Assistant({
-  isEditor
+  isEditor,
+  projectId,
+  projectTitle
 }) {
+  // Read context comes from App props, independently of the editor-only bridge
+  // which Tracker publishes after render. This also scopes viewers and internal projects.
+  const contextProjectId = projectId === undefined ? window.JMAA_APPLY?.projectId || null : projectId;
+  const contextProjectTitle = projectTitle === undefined ? window.JMAA_APPLY?.projectTitle || '' : projectTitle;
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [msgs, setMsgs] = useState([]); // {role:'user'|'ai'|'err', text}
@@ -7976,7 +7982,7 @@ function Assistant({
   const requestLock = React.useRef(false);
   useEffect(()=>{const listener=event=>setOpen(event.detail===true);window.addEventListener('jan-presentation-ai',listener);return()=>window.removeEventListener('jan-presentation-ai',listener);},[]);
   function propose(plan, bridge, sources = []) {
-    if (!isEditor || !bridge || window.JMAA_APPLY?.projectId !== bridge.projectId) throw new Error("Open the intended project before proposing changes.");
+    if (!isEditor || !bridge || contextProjectId !== bridge.projectId || window.JMAA_APPLY?.projectId !== bridge.projectId) throw new Error("Open the intended project before proposing changes.");
     for (const item of [plan, ...(Array.isArray(plan.changes) ? plan.changes : [])]) {
       const targetId = item?.projectId || item?.project_id;
       if (targetId && targetId !== bridge.projectId) throw new Error("The proposal names another project. Open that project and request the change again.");
@@ -8001,7 +8007,7 @@ function Assistant({
     if (!pending || requestLock.current) return;
     try {
       const bridge = window.JMAA_APPLY;
-      if (!isEditor || !bridge || bridge.projectId !== pending.projectId) throw new Error("Reopen " + pending.target + " to apply this proposal.");
+      if (!isEditor || !bridge || contextProjectId !== pending.projectId || bridge.projectId !== pending.projectId) throw new Error("Reopen " + pending.target + " to apply this proposal.");
       if (pending.budgetBefore && pending.budgetBefore !== JSON.stringify([bridge.snapshot.meta.primeBudget, bridge.snapshot.meta.engineeringBudget, bridge.snapshot.meta.totalBudget])) throw new Error("Budget values changed since this preview. Please request a fresh proposal.");
       if (pending.changes.some((c, i) => JSON.stringify(aiChangeBefore(c, bridge.snapshot)) !== pending.before[i])) throw new Error("Project values changed since this preview. Please request a fresh proposal.");
       const done = bridge.apply(pending.changes);
@@ -8038,7 +8044,7 @@ function Assistant({
     if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [msgs, busy, streaming]);
   function canRetry(retry) {
-    return retry.projectId === (window.JMAA_APPLY?.projectId || null) && retry.attachment === attached;
+    return retry.projectId === contextProjectId && retry.attachment === attached;
   }
   async function ask(question, retry) {
     const text = (question || q || (attached ? mode === "grade" ? "Review this grant application." : "Summarize the attached document and identify missing information." : "")).trim();
@@ -8064,7 +8070,7 @@ function Assistant({
     // confirmation workflow as Update data. Questions remain read-only.
     const looksLikeEdit = /^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i(?:'d|\s+would)\s+like\s+(?:you\s+)?to\s+|i\s+want\s+(?:you\s+)?to\s+)?(change|update|set|add|correct|replace|rename|mark|record|enter|remove|delete|clear|uncheck)\b/i.test(text);
     const looksLikeQuestion = /^\s*(?:please\s+)?(?:what|which|who|why|how|when|where|summarize|explain|review|compare|draft|help\s+me|tell\s+me|(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:explain|summarize|review|compare|draft))\b/i.test(text);
-    const activeProject = window.JMAA_APPLY;
+    const activeProject = window.JMAA_APPLY?.projectId === contextProjectId ? window.JMAA_APPLY : null;
     const continuingEdit = followUp && followUp.projectId === activeProject?.projectId && !looksLikeQuestion;
     const requestMode = retry?.mode || (mode === "ask" && isEditor && (looksLikeEdit || continuingEdit) ? "update" : mode);
     if (requestMode !== "update") setFollowUp(null);
@@ -8079,7 +8085,7 @@ function Assistant({
     setAnswerSources([]);
     try {
       if (requestMode === "update" && (!isEditor || !activeProject)) throw new Error("Open a capital project you can edit first. Then describe the change.");
-      if (attached?.documentRefs && attached.projectId !== (activeProject?.projectId || null)) throw new Error("You've switched projects. Choose files for this project, or remove the selected files before asking.");
+      if (attached?.documentRefs && attached.projectId !== contextProjectId) throw new Error("You've switched projects. Choose files for this project, or remove the selected files before asking.");
       const removalPlan = requestMode === "update" && !attached ? directEditPlan(text) : null;
       if (removalPlan && activeProject) {
         propose(removalPlan, activeProject);
@@ -8096,9 +8102,9 @@ function Assistant({
           question: text,
           history,
           mode: requestMode,
-          targetProject: activeProject ? {
-            id: activeProject.projectId,
-            title: activeProject.projectTitle
+          targetProject: contextProjectId ? {
+            id: contextProjectId,
+            title: contextProjectTitle
           } : undefined,
           document: attached?.documentRefs || attached?.documentId ? undefined : attached || undefined,
           documentRefs: attached?.documentRefs || undefined,
@@ -8149,7 +8155,7 @@ function Assistant({
       setMsgs(m => [...m, {
         role: "err",
         text: hint,
-        retry: { question: text, mode: requestMode, projectId: activeProject?.projectId || null, attachment: attached }
+        retry: { question: text, mode: requestMode, projectId: contextProjectId, attachment: attached }
       }]);
     } finally {
       requestLock.current = false;
@@ -8248,10 +8254,10 @@ function Assistant({
   }, "New chat"), /*#__PURE__*/React.createElement("a", {
     className: "ai-close",
     onClick: () => setOpen(false)
-  }, "×")), React.createElement("div", { className: "ai-context" }, window.JMAA_APPLY ? "Project context: " + window.JMAA_APPLY.projectTitle + " · Changes require your review" : "Portfolio questions · Open a capital project to edit its data"),
+  }, "×")), React.createElement("div", { className: "ai-context" }, contextProjectId ? "Project context: " + (contextProjectTitle || "Loading project…") + " · Changes require your review" : "Portfolio questions · Open a project for its files and details"),
   React.createElement("div", {className:"ai-source-toolbar"},React.createElement("button",{type:"button",disabled:busy||reading,onClick:()=>setShowSources(v=>!v)},showSources?"Hide project files":"Read project files"),
     React.createElement("span",null,attached?.documentRefs ? attached.documentRefs.length + " file(s) selected" : "Dashboard + SharePoint files")),
-  showSources && React.createElement(AssistantDocumentPicker,{projectId:window.JMAA_APPLY?.projectId || null,initialSelection:attached?.projectId === (window.JMAA_APPLY?.projectId || null) ? attached?.documentRefs : [],onSelect:files=>{setAttached({name:files.map(d=>d.name).join(" · "),documentRefs:files.map(d=>({source:d.source,id:d.id})),projectId:window.JMAA_APPLY?.projectId || null});setShowSources(false);}}),
+  showSources && React.createElement(AssistantDocumentPicker,{projectId:contextProjectId,initialSelection:attached?.projectId === contextProjectId ? attached?.documentRefs : [],onSelect:files=>{setAttached({name:files.map(d=>d.name).join(" · "),documentRefs:files.map(d=>({source:d.source,id:d.id})),projectId:contextProjectId});setShowSources(false);}}),
   /*#__PURE__*/React.createElement("div", {
     className: "ai-modes"
   }, MODES.filter(m => !m.editorOnly || isEditor).map(m => /*#__PURE__*/React.createElement("button", {
@@ -8438,36 +8444,69 @@ function AssistantDocumentPicker({projectId = null,initialSelection = [],onSelec
   const [loaded,setLoaded] = React.useState({projectId,files:null,warnings:[]});
   const [query,setQuery] = React.useState('');
   const [selected,setSelected] = React.useState([]);
+  const [refresh,setRefresh] = React.useState(0);
+  const selectionScope = React.useRef(undefined);
   const keyOf = file => JSON.stringify([file.source,file.id]);
   React.useEffect(()=>{
     let live = true;
-    setLoaded({projectId,files:null,warnings:[]});
-    setQuery('');
-    setSelected((initialSelection || []).slice(0,3).map(keyOf));
+    setLoaded({projectId,files:null,warnings:[],progress:'Loading project files…'});
+    if (selectionScope.current !== projectId) {
+      selectionScope.current = projectId;
+      setQuery('');
+      setSelected((initialSelection || []).slice(0,3).map(keyOf));
+    }
     async function load(){
       const warnings = [];
-      let dashboard = sb.from('documents').select('id,project_id,label,file_name,storage_path,size_bytes,review_status,revision_no').neq('review_status','archived').order('created_at',{ascending:false}).limit(300);
-      let sharepoint = sb.from('sharepoint_documents').select('source_id,project_id,file_name,url,modified_at,source_version').order('modified_at',{ascending:false}).limit(300);
-      if (projectId) { dashboard = dashboard.eq('project_id',projectId); sharepoint = sharepoint.eq('project_id',projectId); }
-      const results = await Promise.allSettled([dashboard,sharepoint].map(async (request,index)=>{
-        const result = await requestWithTimeout(request,index ? 'Loading SharePoint files' : 'Loading dashboard files');
-        if (result.error) throw result.error;
-        return result.data || [];
-      }));
+      const counts = [0,0];
+      const progress = message => { if(live)setLoaded({projectId,files:null,warnings:[],progress:message}); };
+      async function loadIndex(index) {
+        const label = index ? 'SharePoint' : 'Dashboard', idField = index ? 'source_id' : 'id';
+        const rows = new Map();
+        // Stable tie-break ordering keeps equal timestamps from shifting between pages.
+        for (let page=0;page<10 && live;page++) {
+          try {
+            let request = index
+              ? sb.from('sharepoint_documents').select('source_id,project_id,file_name,url,modified_at,source_version').order('modified_at',{ascending:false}).order('source_id',{ascending:true})
+              : sb.from('documents').select('id,project_id,label,file_name,storage_path,size_bytes,review_status,revision_no').neq('review_status','archived').order('created_at',{ascending:false}).order('id',{ascending:true});
+            if(projectId)request=request.eq('project_id',projectId);
+            const result = await requestWithTimeout(request.range(page*300,page*300+299),'Loading ' + label + ' files');
+            if(!live)return [];
+            if(result.error)throw result.error;
+            const batch = result.data || [];
+            batch.forEach(row=>rows.set(row[idField],row));
+            counts[index] = rows.size;
+            progress('Loading project files · ' + (counts[0]+counts[1]) + ' found');
+            if(batch.length<300)break;
+            if(page===9)warnings.push(label + ' list reached the 3,000-file limit. Search covers loaded files only; open a project for a smaller list or open SharePoint to see the remaining files.');
+          } catch (_) {
+            warnings.push(label + (rows.size ? ' files loaded only partly (' + rows.size + ' files).' : ' files could not be loaded.') + ' Refresh files to try again.');
+            break;
+          }
+        }
+        return Array.from(rows.values());
+      }
+      const results = await Promise.allSettled([loadIndex(0),loadIndex(1)]);
       if (!live) return;
       const rows = results.map((result,index)=>{
         if (result.status === 'fulfilled') return result.value;
-        warnings.push((index ? 'SharePoint' : 'Dashboard') + ' files could not be loaded. Reopen this list to try again.');
+        warnings.push((index ? 'SharePoint' : 'Dashboard') + ' files could not be loaded. Refresh files to try again.');
         return [];
       });
-      let cached = [];
-      if (rows[1].length) {
-        try {
-          const result = await requestWithTimeout(sb.from('sharepoint_file_contents').select('source_id,storage_path,size_bytes,source_modified_at,source_version,cached_at').in('source_id',rows[1].map(row=>row.source_id)), 'Checking SharePoint file contents');
-          if (result.error) throw result.error;
-          cached = result.data || [];
-        } catch (_) { warnings.push('SharePoint contents are not available right now. You can still open the originals or choose a dashboard file.'); }
+      const cached = [], chunks = [];
+      for(let start=0;start<rows[1].length;start+=100)chunks.push(rows[1].slice(start,start+100).map(row=>row.source_id));
+      let cacheFailed = false;
+      // Keep URLs and concurrent requests bounded, even for large project folders.
+      for(let start=0;start<chunks.length && live;start+=3) {
+        progress('Loading project files · checking SharePoint contents (' + Math.min(start*100,rows[1].length) + ' of ' + rows[1].length + ')');
+        const checks = await Promise.allSettled(chunks.slice(start,start+3).map(async ids=>{
+          const result = await requestWithTimeout(sb.from('sharepoint_file_contents').select('source_id,storage_path,size_bytes,source_modified_at,source_version,cached_at').in('source_id',ids),'Checking SharePoint file contents');
+          if(result.error)throw result.error;
+          return result.data || [];
+        }));
+        if(!live)return;
+        checks.forEach(result=>{if(result.status==='fulfilled')cached.push(...result.value);else cacheFailed=true;});
       }
+      if(cacheFailed)warnings.push('Some SharePoint contents are not available right now. Refresh files to try again. You can still open the originals or choose a dashboard file.');
       if (!live) return;
       const cachedById = new Map(cached.map(file=>[file.source_id,file]));
       const files = rows[0].filter(row=>row.review_status !== 'archived').map(row=>assistantDocumentChoice('dashboard',row))
@@ -8476,9 +8515,9 @@ function AssistantDocumentPicker({projectId = null,initialSelection = [],onSelec
       setSelected(previous=>previous.filter(key=>readable.has(key)));
       setLoaded({projectId,files,warnings});
     }
-    load().catch(()=>{if(live)setLoaded({projectId,files:[],warnings:['Files could not be loaded. Reopen this list to try again.']});});
+    load().catch(()=>{if(live)setLoaded({projectId,files:[],warnings:['Files could not be loaded. Refresh files to try again.']});});
     return()=>{live=false;};
-  },[projectId]);
+  },[projectId,refresh]);
   // A different project must never briefly display the previous project's choices.
   const files = loaded.projectId === projectId ? loaded.files : null;
   const warnings = loaded.projectId === projectId ? loaded.warnings : [];
@@ -8488,8 +8527,11 @@ function AssistantDocumentPicker({projectId = null,initialSelection = [],onSelec
   return e('div',{className:'ai-source-picker',style:{maxHeight:'50%',overflowY:'auto',flexShrink:0}},
     e('input',{type:'search',value:query,onChange:event=>setQuery(event.target.value),placeholder:'Search dashboard and SharePoint files','aria-label':'Search AI document choices'}),
     e('p',null,'Choose up to 3 ready files to read or compare. PDF, TXT, MD, CSV and JSON are supported. File contents are sent to JAN AI when you press Send.'),
+    e('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
+      e('button',{type:'button',className:'ai-chip',disabled:files===null,onClick:()=>setRefresh(value=>value+1)},'Refresh files'),
+      files!==null && e('span',{style:{fontSize:12,color:'#53677A'}},files.length + ' files loaded')),
     warnings.map((warning,index)=>e('p',{key:index,role:'status',style:{color:'#8A6414'}},warning)),
-    files===null ? e('p',{role:'status'},'Loading project files…') : !files.length ? e('p',null,'No files in this selection. You can attach a PDF or text file with ⊕.') : !matches.length ? e('p',null,'No files match your search.') :
+    files===null ? e('p',{role:'status'},loaded.projectId===projectId && loaded.progress || 'Loading project files…') : !files.length ? e('p',null,'No files in this selection. You can attach a PDF or text file with ⊕.') : !matches.length ? e('p',null,'No files match your search.') :
       e('div',{className:'ai-source-choices'},matches.map(file=>{
         const key = keyOf(file), checked = selected.includes(key);
         return e('div',{key,style:{borderBottom:'1px solid #E3EBF2'}},
@@ -9562,7 +9604,9 @@ function CloudApp() {
     setFieldView: setFieldView,
     onSignOut: () => sb.auth.signOut()
   }), !display && /*#__PURE__*/React.createElement(Assistant, {
-    isEditor: profile.role === "editor"
+    isEditor: profile.role === "editor",
+    projectId: openId || null,
+    projectTitle: openData?.meta?.title || ''
   }));
 }
 function BootError({

@@ -11,7 +11,7 @@ const text = node => Array.isArray(node) ? node.map(text).join(' ') : node && ty
 const button = (tree, label) => all(tree).find(node => node.tag === 'button' && node.children.includes(label));
 const fileButton = (tree, name, sourceName) => all(tree).find(node => node.tag === 'button' && node.props['aria-label'] === `Select ${name} (${sourceName})`);
 const modified = '2026-11-03T18:00:00Z';
-const dashboard = (id, name = `${id}.pdf`) => ({ id, project_id: 'p1', file_name: name, storage_path: `p1/${name}`, size_bytes: 100, review_status: 'draft', revision_no: 1 });
+const dashboard = (id, name = `${id}.pdf`) => ({ id, project_id: 'p1', file_name: name, storage_path: `p1/${name}`, size_bytes: 100, review_status: 'draft', revision_no: 1, created_at: modified });
 const sharepoint = (id, name = `${id}.pdf`) => ({ source_id: id, project_id: 'p1', file_name: name, modified_at: modified, source_version: '2', url: `https://jmaait.sharepoint.com/sites/CapitalProgramming/${name}` });
 const cached = id => ({ source_id: id, storage_path: `sharepoint/${id}`, size_bytes: 100, source_modified_at: modified, source_version: '2', cached_at: modified });
 
@@ -40,19 +40,23 @@ function runtime({ tables = {}, failTable, onQuery, invoke } = {}) {
       useRef(initial) { const index = cursor++; if (!(index in slots)) slots[index] = { current: initial }; return slots[index]; } },
     sb: {
       from(table) {
-        const query = { table, filters: [] };
+        const query = { table, filters: [], orders: [] };
         const builder = {
           select(columns) { query.columns = columns; return this; },
           neq(field, value) { query.filters.push(['neq', field, value]); return this; },
           eq(field, value) { query.filters.push(['eq', field, value]); return this; },
           in(field, value) { query.filters.push(['in', field, value]); return this; },
-          order() { return this; }, limit() { return this; },
+          order(field, options) { query.orders.push([field, options.ascending]); return this; },
+          range(start, end) { query.range = [start, end]; return this; }, limit() { return this; },
           then(resolve, reject) {
             queries.push(query);
             return Promise.resolve().then(() => {
               if (onQuery) { const custom = onQuery(query); if (custom) return custom; }
               if (table === failTable) return { error: { message: 'Unavailable' } };
-              return { data: (tables[table] || []).filter(row => query.filters.every(([op, field, value]) => op === 'eq' ? row[field] === value : op === 'neq' ? row[field] !== value : value.includes(row[field]))) };
+              let rows = (tables[table] || []).filter(row => query.filters.every(([op, field, value]) => op === 'eq' ? row[field] === value : op === 'neq' ? row[field] !== value : value.includes(row[field])));
+              rows.sort((a, b) => { for (const [field, ascending] of query.orders) { const compared = String(a[field]).localeCompare(String(b[field])); if (compared) return ascending ? compared : -compared; } return 0; });
+              if (query.range) rows = rows.slice(query.range[0], query.range[1] + 1);
+              return { data: rows };
             }).then(resolve, reject);
           }
         };
@@ -126,6 +130,73 @@ test('one failed file index does not hide the other available source', async () 
     assert.equal(fileButton(tree, 'ready.pdf', failTable === 'documents' ? 'SharePoint' : 'Dashboard').props.disabled, false);
     assert.match(text(tree), /files could not be loaded/);
   }
+});
+
+test('large folders load every page with stable ordering and bounded contents queries', async () => {
+  const ids = Array.from({ length: 423 }, (_, i) => `file-${String(i).padStart(3, '0')}`);
+  const env = runtime({ tables: {
+    documents: ids.slice(0, 301).map(id => dashboard(id)).reverse(),
+    sharepoint_documents: ids.map(id => sharepoint(id)).reverse(),
+    sharepoint_file_contents: ids.map(id => cached(id))
+  } });
+  let selected;
+  const props = { projectId: 'p1', onSelect: files => { selected = files; } };
+  env.render('AssistantDocumentPicker', props); env.runEffects(); await flush();
+  const tree = env.render('AssistantDocumentPicker', props);
+  assert.equal(fileButton(tree, 'file-422.pdf', 'SharePoint').props.disabled, false);
+  assert.equal(fileButton(tree, 'file-300.pdf', 'Dashboard').props.disabled, false);
+  assert.match(text(tree), /724 files loaded/);
+  for (const [table, timestamp, idField] of [['documents', 'created_at', 'id'], ['sharepoint_documents', 'modified_at', 'source_id']]) {
+    const pages = env.queries.filter(query => query.table === table);
+    assert.deepEqual(pages.map(query => query.range), [[0, 299], [300, 599]]);
+    assert.ok(pages.every(query => JSON.stringify(query.orders) === JSON.stringify([[timestamp, false], [idField, true]])));
+  }
+  const cacheQueries = env.queries.filter(query => query.table === 'sharepoint_file_contents');
+  assert.deepEqual(cacheQueries.map(query => query.filters[0][2].length), [100, 100, 100, 100, 23]);
+  assert.equal(new Set(cacheQueries.flatMap(query => Array.from(query.filters[0][2]))).size, 423);
+  fileButton(tree, 'file-422.pdf', 'SharePoint').props.onClick();
+  button(env.render('AssistantDocumentPicker', props), 'Use selected files').props.onClick();
+  assert.equal(selected[0].id, 'file-422');
+});
+
+test('a failed later page or cache chunk preserves other loaded files and reports the partial result', async () => {
+  const ids = Array.from({ length: 423 }, (_, i) => `file-${String(i).padStart(3, '0')}`);
+  const env = runtime({ tables: {
+    documents: [dashboard('ready')], sharepoint_documents: ids.map(id => sharepoint(id)), sharepoint_file_contents: ids.map(id => cached(id))
+  }, onQuery(query) {
+    if (query.table === 'sharepoint_documents' && query.range[0] === 300) return { error: { message: 'Unavailable' } };
+    if (query.table === 'sharepoint_file_contents' && query.filters[0][2].includes('file-100')) return { error: { message: 'Unavailable' } };
+  } });
+  const props = { projectId: 'p1', onSelect() {} };
+  env.render('AssistantDocumentPicker', props); env.runEffects(); await flush();
+  const tree = env.render('AssistantDocumentPicker', props);
+  assert.equal(fileButton(tree, 'ready.pdf', 'Dashboard').props.disabled, false);
+  assert.equal(fileButton(tree, 'file-299.pdf', 'SharePoint').props.disabled, false);
+  assert.equal(fileButton(tree, 'file-100.pdf', 'SharePoint').props.disabled, true);
+  assert.equal(fileButton(tree, 'file-300.pdf', 'SharePoint'), undefined);
+  assert.match(text(tree), /SharePoint files loaded only partly \(300 files\).*Refresh files/);
+  assert.match(text(tree), /Some SharePoint contents are not available/);
+});
+
+test('the folder limit is visible and refresh picks up new contents while preserving selected files', async () => {
+  const ids = Array.from({ length: 3001 }, (_, i) => `file-${String(i).padStart(4, '0')}`);
+  const tables = { documents: [dashboard('ready')], sharepoint_documents: ids.map(id => sharepoint(id)), sharepoint_file_contents: [] };
+  const env = runtime({ tables });
+  const props = { projectId: 'p1', onSelect() {} };
+  env.render('AssistantDocumentPicker', props); env.runEffects(); await flush();
+  let tree = env.render('AssistantDocumentPicker', props);
+  assert.match(text(tree), /3,000-file limit.*Search covers loaded files only/);
+  assert.equal(env.queries.filter(query => query.table === 'sharepoint_documents').length, 10);
+  assert.equal(fileButton(tree, 'file-2999.pdf', 'SharePoint').props.disabled, true);
+  fileButton(tree, 'ready.pdf', 'Dashboard').props.onClick();
+  tables.sharepoint_file_contents.push(cached('file-2999'));
+  button(env.render('AssistantDocumentPicker', props), 'Refresh files').props.onClick();
+  env.render('AssistantDocumentPicker', props); env.runEffects();
+  assert.equal(button(env.render('AssistantDocumentPicker', props), 'Refresh files').props.disabled, true);
+  await flush();
+  tree = env.render('AssistantDocumentPicker', props);
+  assert.equal(fileButton(tree, 'file-2999.pdf', 'SharePoint').props.disabled, false);
+  assert.match(text(tree), /1 of 3 selected/);
 });
 
 test('picker limits selection to three files and reports an empty search', async () => {
@@ -234,4 +305,52 @@ test('changing project blocks references from the previous project until files a
   const tree = await env.send('Read this file');
   assert.equal(env.calls.length, 0);
   assert.match(text(tree), /Choose files for this project/);
+});
+
+test('App passes the visible project to the assistant for capital, internal and viewer contexts', () => {
+  const appSource = html.slice(html.indexOf('function CloudApp()'), html.indexOf('function BootError('));
+  for (const category of ['capital', 'internal']) {
+    for (const role of ['viewer', 'editor']) {
+      let index = 0;
+      const state = [{ user: { id: 'user' } }, false, { role }, 'visible-project', { meta: { title: 'Visible project', projectCategory: category } }, '', false, 0, false, false, false, null];
+      const context = {
+        CONFIGURED: true, BOOT_ERROR: null, window: {}, useEffect() {}, useState: () => [state[index++], () => {}],
+        React: { Fragment: 'fragment', useRef: initial => ({ current: initial }), createElement: (tag, props, ...children) => ({ tag, props: props || {}, children }) },
+        Tracker: 'Tracker', InternalProject: 'InternalProject', Assistant: 'Assistant'
+      };
+      vm.createContext(context); vm.runInContext(appSource, context);
+      const assistant = all(context.CloudApp()).find(node => node.tag === 'Assistant');
+      assert.equal(assistant.props.projectId, 'visible-project');
+      assert.equal(assistant.props.projectTitle, 'Visible project');
+      assert.equal(assistant.props.isEditor, role === 'editor');
+    }
+  }
+});
+
+test('open assistant immediately follows project props even before the editor bridge publishes', async () => {
+  const env = runtime();
+  let props = { isEditor: false, projectId: 'p1', projectTitle: 'Threshold Lighting' };
+  const render = () => env.render('Assistant', props);
+  render().props.onClick();
+  button(render(), 'Read project files').props.onClick();
+  props = { ...props, projectId: null, projectTitle: '' };
+  let tree = render();
+  assert.match(text(tree), /Portfolio questions/);
+  assert.equal(all(tree).find(node => node.tag === env.context.AssistantDocumentPicker).props.projectId, null);
+  props = { ...props, projectId: 'p2', projectTitle: 'RSA Drainage' };
+  tree = render();
+  assert.match(text(tree), /Project context: RSA Drainage/);
+  const picker = all(tree).find(node => node.tag === env.context.AssistantDocumentPicker);
+  assert.equal(picker.props.projectId, 'p2');
+  picker.props.onSelect([{ source: 'sharepoint', id: 'rsa-file', name: 'RSA.pdf' }]);
+  all(render()).find(node => node.tag === 'input' && node.props.value !== undefined).props.onChange({ target: { value: 'Summarize this file' } });
+  await button(render(), 'Send').props.onClick();
+  assert.equal(env.context.window.JMAA_APPLY.projectId, 'p1', 'The stale editor bridge has not rerendered yet');
+  assert.equal(env.calls[0].targetProject.id, 'p2');
+  assert.equal(env.calls[0].documentRefs[0].id, 'rsa-file');
+  props = { ...props, isEditor: true };
+  all(render()).find(node => node.tag === 'input' && node.props.value !== undefined).props.onChange({ target: { value: 'Set construction budget to 23' } });
+  await button(render(), 'Send').props.onClick();
+  assert.equal(env.calls.length, 1, 'An edit cannot use a bridge from another project');
+  assert.match(text(render()), /Open a capital project you can edit first/);
 });

@@ -57,9 +57,25 @@ Microsoft connector reference: https://learn.microsoft.com/en-us/sharepoint/dev/
 
 The receiving code and migration now support a private AI copy alongside the
 existing metadata index. Migration `sharepoint_ai_file_contents` was applied
-and `sharepoint-sync` version 4 deployed on November 3. The Power Automate
-content action and real-file verification must be completed before claiming
-that existing SharePoint contents are available live.
+and `sharepoint-sync` version 4 deployed on November 3. Both the automatic
+updates flow (`0d707df3-0548-4044-ba62-c99bba78213d`) and initial index flow
+(`6e10d889-7abb-4cc9-8a1b-18ce25d7a522`) were saved with the content-delivery
+stage. The existing metadata HTTP actions remain in place.
+
+The initial backfill found **691 files** and is processing them. At 11:15 AM
+Central on November 3, seven real files totaling 7,769,022 bytes were cached.
+The first was RSA's `RFQ Runway 16L 34R Safety Area Improvements at JAN.pdf`
+(860,212 bytes). RSA's Michael Baker proposal and Apron Lighting's Arora fee
+proposal also arrived. The first four records checked matched their current
+SharePoint metadata timestamp/version and had no version conflict. This
+verifies actual file-byte delivery; it does not mean all 691 files are ready,
+and unsupported or oversized files remain link-only.
+
+The initial index now includes the `Shared Documents/JAN CPT/` workspace
+alongside its five legacy project folder scopes. The receiver still requires
+a confirmed project mapping. A replayed automatic trigger completed all
+actions but was unmapped, so that particular replay was not used as proof of
+mapped file-content delivery.
 
 Keep the existing `sharepoint-sync` URL, scoped header, and metadata fields.
 Add an optional `content_base64` field containing the unmodified base64
@@ -87,6 +103,14 @@ Fetch metadata before and after reading the bytes. Deliver contents only when
 the file's modification time and version stayed the same; otherwise retry the
 file using its newer metadata. The receiver verifies metadata identity but
 cannot independently identify the SharePoint version of arbitrary bytes.
+
+The saved flow stage gets file metadata, checks the metadata HTTP status is
+`added`, `updated`, or `unchanged`, and filters by supported extension and size.
+It then gets file contents with secured outputs, re-reads properties, and sends
+the final HTTP request with secured inputs. `content_base64` is included only
+when Modified, VersionNumber, and FullPath still match the original metadata;
+otherwise the flow sends an empty value and no bytes are cached. `unchanged`
+must remain eligible so already-indexed files can receive their first contents.
 
 Only PDF and UTF-8 TXT, MD, CSV, or JSON files up to **3,600,000 decoded bytes**
 are accepted. PDF bytes must have a PDF header; text cannot contain binary
