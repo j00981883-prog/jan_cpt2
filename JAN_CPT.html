@@ -1720,7 +1720,9 @@ function Tracker({
     execSum: execSum,
     pay: pay,
     meta: meta,
-    projectId: projectId
+    projectId: projectId,
+    grant: grant,
+    onNavigate: nextTab => { setTab(nextTab); window.scrollTo({top:0,behavior:"auto"}); }
   }), tab === "log" && /*#__PURE__*/React.createElement(WeeklyLog, {
     rows: rows,
     setWeek: setWeek,
@@ -2075,6 +2077,167 @@ function MunisUpdateLauncher({ projectId = null, projects = [] }) {
     open && React.createElement(MunisSyncDemo, {projectId, projects, onClose:()=>setOpen(false)}));
 }
 
+function buildProjectRiskExplanation({execSum = {}, grant = {}, meta = {}, current = {}, pay = {}} = {}) {
+  const number = value => value == null || typeof value === 'boolean' || !['number','string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+  const count = value => number(value) ?? 0;
+  const money = value => '$' + value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct = value => (value*100).toFixed(1) + '%';
+  const rows = Array.isArray(execSum.rows) ? execSum.rows : [];
+  const items = [
+    ['Budget','log','Review weekly spending'],
+    ['Schedule','log','Review weekly delays'],
+    ['Grant Compliance','grant','Review grant checklist'],
+    ['Reimbursements','pay','Review pay applications'],
+    ['Change Orders','grant','Review change orders'],
+    ['Safety','grant','Review safety records']
+  ].map(([label,tab,actionLabel])=>{
+    const row = rows.find(item=>Array.isArray(item) && item[0]===label);
+    const kind = ['red','amber','green','neutral'].includes(row?.[1]) ? row[1] : 'neutral';
+    const item = {label,kind,status:typeof row?.[2]==='string'?row[2]:'No status available',reason:'',action:'',tab,actionLabel};
+    if(!row) {
+      item.reason = 'This indicator is not available in the current dashboard summary.';
+      item.action = 'Review the source records before relying on this check.';
+      return item;
+    }
+    if(label==='Budget') {
+      const variance = number(current.cumVariance), limit = number(meta.budgetVarianceLimit);
+      if(kind==='red') {
+        item.reason = 'Recorded spending has crossed the configured variance limit against the plan for logged weeks.';
+        if(variance!==null && limit!==null)item.reason += ' Variance is ' + pct(variance) + '; the limit is ' + pct(limit) + '.';
+        item.action = 'Review weekly spending, confirm the budget and limits, and document the correction or recovery plan.';
+      } else if(kind==='amber') {
+        item.reason = 'Spending is approaching the configured variance limit against the plan for logged weeks.';
+        if(variance!==null && limit!==null)item.reason += ' Variance is ' + pct(variance) + '; amber starts above ' + pct(limit*0.6) + ' and the limit is ' + pct(limit) + '.';
+        item.action = 'Check the latest spending entries and upcoming costs before the limit is crossed.';
+      } else {
+        item.reason = number(current.weeksComplete)===0 ? 'No weekly spending entries are recorded. The green indicator does not verify actual costs.' : 'Recorded spending variance has not triggered a warning against the plan for logged weeks.';
+        item.action = 'Confirm that weekly spending entries and the approved budget are current.';
+      }
+    } else if(label==='Schedule') {
+      const average = number(current.daysPerWeek), limit = number(meta.timeVarianceLimitPerWeek);
+      if(kind==='red') {
+        item.reason = 'Recorded delay per logged week exceeds the configured weekly limit.';
+        if(average!==null && limit!==null)item.reason += ' The average is ' + average.toFixed(1) + ' days; the limit is ' + limit + ' days.';
+        item.reason += ' This average uses weeks with recorded spending.';
+        item.action = 'Check the delay entries and agree on the recovery steps and revised completion date.';
+      } else if(kind==='amber') {
+        item.reason = count(current.cumDaysLost) + ' calendar days of delay are recorded without crossing the weekly delay limit.';
+        item.action = 'Confirm the causes of delay and record the next steps to recover the schedule.';
+      } else {
+        item.reason = number(current.weeksComplete)===0 ? 'No weekly spending entries are recorded, so the green indicator does not verify schedule progress.' : 'Recorded delay has not triggered a schedule warning.';
+        item.action = 'Keep weekly delay entries and the project schedule current.';
+      }
+    } else if(label==='Grant Compliance') {
+      const done = number(execSum.msDone), total = number(execSum.msTotal);
+      const progress = done!==null && total!==null ? done + ' of ' + total + ' checklist items are recorded complete. ' : '';
+      if(kind==='neutral') {
+        item.reason = 'No grant sections are configured. This indicator does not raise the rating; grant applicability has not been confirmed.';
+        item.action = 'Confirm whether this project has grant obligations and add grant sections if needed.';
+      } else if(kind==='red') {
+        item.reason = 'No grant milestones are recorded as complete. This makes the indicator red; it does not establish that a filing is overdue.';
+        item.action = 'Review grant applicability and record completed checklist steps with their completion dates.';
+      } else if(kind==='amber') {
+        item.reason = progress + 'At least one grant still needs its execution milestone recorded, or its full checklist completed if it has no execution milestone.';
+        item.action = 'Review the remaining grant steps and confirm the execution record and completion dates for each grant.';
+      } else {
+        const remaining = done!==null && total!==null ? Math.max(0,total-done) : null;
+        item.reason = progress + 'The execution milestone is recorded for each grant, or all items are complete for a section without that milestone.';
+        if(remaining>0)item.reason += ' ' + remaining + ' checklist items remain; green does not mean every grant task is finished.';
+        item.action = remaining>0 ? 'Review the remaining checklist items and their reporting dates.' : 'Keep grant records and supporting documents current.';
+      }
+    } else if(label==='Reimbursements') {
+      const requests = count(pay.submittedCount), receipts = count(pay.receivedCount);
+      if(requests===0) {
+        item.reason = 'No reimbursement requests are recorded. The dashboard flags this for review; it does not establish that any payment is overdue.';
+        item.action = 'Check whether a reimbursement request is needed and record its submission date when sent.';
+      } else {
+        item.reason = receipts + ' reimbursement receipt records and ' + requests + ' request records are entered. ';
+        item.reason += kind==='green' ? 'The receipt count meets the request count, but each receipt still needs to be matched to its application.' : 'Review applications awaiting reimbursement confirmation; these counts do not establish overdue status.';
+        item.action = 'Verify request and receipt dates and amounts, then follow up with Finance on unmatched records.';
+      }
+      const pending = number(pay.pendingAmount);
+      if(pending>0)item.reason += ' ' + money(pending) + ' is listed for paid applications without a recorded reimbursement; this may include applications not yet requested.';
+    } else if(label==='Change Orders') {
+      const changes = Array.isArray(grant.changeOrders) ? grant.changeOrders : [];
+      const recorded = changes.length || count(grant.coCount);
+      item.reason = recorded ? recorded + ' change order record(s) are entered. This flags recorded changes for review; it does not verify approval or execution.' : 'No change orders are recorded.';
+      if(changes.length) {
+        const cost = changes.reduce((sum,change)=>sum+count(change?.cost),0), days = changes.reduce((sum,change)=>sum+count(change?.days),0);
+        item.reason += ' Recorded net changes: ' + money(cost) + ' and ' + days + ' calendar days.';
+      }
+      item.action = recorded ? 'Confirm each change order, its approval, and its effect on cost and completion dates.' : 'Record any approved scope, cost or schedule changes as they occur.';
+    } else if(label==='Safety') {
+      const incidents = count(grant.safetyIncidents);
+      item.reason = kind==='red' ? incidents + ' safety incident(s) are recorded. Any nonzero count makes this indicator red; the rating does not describe severity or resolution.' : 'No safety incidents are recorded. This reflects dashboard entries, not independent confirmation of site conditions.';
+      item.action = kind==='red' ? 'Review the incident records and confirm that follow-up and corrective actions are documented.' : 'Keep incident records current and continue routine safety checks.';
+    }
+    return item;
+  });
+  const red = items.filter(item=>item.kind==='red'), amber = items.filter(item=>item.kind==='amber');
+  const kind = red.length ? 'red' : amber.length ? 'amber' : 'green';
+  const level = kind==='red' ? 'High' : kind==='amber' ? 'Moderate' : 'Low';
+  const names = list => {
+    const labels = list.map(item=>item.label);
+    return labels.length < 3 ? labels.join(' and ') : labels.slice(0,-1).join(', ') + ', and ' + labels[labels.length-1];
+  };
+  const summary = red.length ? 'High because ' + names(red) + (red.length===1?' is':' are') + ' red.' + (amber.length?' Amber checks also need follow-up.':'')
+    : amber.length ? 'Moderate because ' + names(amber) + (amber.length===1?' is':' are') + ' amber, with no red indicators.'
+    : 'No recorded indicators are red or amber. Low reflects dashboard entries, not proof that every project task is complete.';
+  return {level,kind,summary,rule:'Any red indicator makes the rating High. With no red indicators, any amber indicator makes it Moderate. Otherwise it is Low. Gray indicators do not raise the rating.',
+    attention:[...red,...amber],checks:items.filter(item=>item.kind!=='red' && item.kind!=='amber')};
+}
+// PROJECT_RISK_DETAILS_END
+
+function ExecutiveSummary({execSum, riskDetails, projectId, onNavigate}) {
+  const [riskOpen, setRiskOpen] = useState(false);
+  const riskButton = React.useRef(null);
+  const panelId = "project-risk-details-" + String(projectId || "current").replace(/[^a-zA-Z0-9_-]/g, "");
+  const e = React.createElement;
+  const closeRisk = () => { setRiskOpen(false); riskButton.current?.focus(); };
+  return e("section", {className:"panel rise",style:{marginTop:0}},
+    e("h2", null, "Executive Summary"),
+    e("div", {className:"exec-grid"}, execSum.rows.map(([label, kind, text], i) => {
+      const isRisk = label === "Risk Level";
+      return e(isRisk ? "button" : "div", {
+        key:label,
+        className:"exec-cell rise" + (isRisk ? " exec-risk exec-risk-button" : ""),
+        style:{animationDelay:`${i * 45}ms`},
+        ...(isRisk ? {type:"button",ref:riskButton,"aria-expanded":riskOpen,"aria-controls":panelId,
+          "aria-label":`Risk Level: ${text}. ${riskOpen ? "Hide" : "Show"} explanation`,
+          onClick:()=>setRiskOpen(value=>!value)} : {})
+      }, e("span", {className:`dot-ind dot-${kind}`,"aria-hidden":true}),
+        e("span", {className:"exec-cell-copy"}, e("span", {className:"exec-metric"}, label),
+          e("span", {className:"exec-status"}, text),
+          isRisk && e("span", {className:"exec-risk-hint"}, riskOpen ? "Hide details" : "Why this rating?")),
+        isRisk && e("span", {className:"exec-risk-chevron","aria-hidden":true}, riskOpen ? "−" : "+"));
+    })),
+    riskOpen && e("section", {id:panelId,className:"risk-details",role:"region","aria-label":"Project risk explanation",
+      onKeyDown:event=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();closeRisk();}}},
+      e("div", {className:"risk-details-head"},
+        e("div", null, e("span", {className:`risk-rating risk-rating-${riskDetails.kind}`}, `${riskDetails.level} risk`),
+          e("h3", null, "Why this rating?")),
+        e("button", {type:"button",className:"btn btn-ghost btn-xs risk-close",onClick:closeRisk,"aria-label":"Close risk explanation"}, "Close")),
+      e("p", {className:"risk-summary"}, riskDetails.summary),
+      e("p", {className:"risk-rule"}, riskDetails.rule),
+      e("h4", null, riskDetails.attention.length ? "What needs attention" : "No flagged items"),
+      riskDetails.attention.length ? e("div", {className:"risk-attention-grid"}, riskDetails.attention.map(item=>
+        e("article", {key:item.label,className:`risk-item risk-item-${item.kind}`},
+          e("div", {className:"risk-item-title"}, e("h5", null, item.label),
+            e("span", {className:`risk-priority risk-priority-${item.kind}`}, item.kind === "red" ? "High attention" : "Review")),
+          e("p", {className:"risk-item-status"}, item.status),
+          e("p", null, item.reason),
+          e("p", {className:"risk-next-step"}, e("strong", null, "Next step: "), item.action),
+          typeof onNavigate === "function" && e("button", {type:"button",className:"btn btn-ghost btn-sm risk-review",onClick:()=>onNavigate(item.tab)}, item.actionLabel)))) :
+        e("p", {className:"risk-clear"}, "No red or amber indicators are currently recorded. Keep project entries and checklists up to date."),
+      riskDetails.checks.length > 0 && e("details", {className:"risk-other-checks",open:riskDetails.attention.length === 0},
+        e("summary", null, `Other checks (${riskDetails.checks.length})`),
+        e("div", {className:"risk-check-grid"}, riskDetails.checks.map(item=>e("article", {key:item.label,className:"risk-check"},
+          e("h5", null, e("span", {className:`dot-ind dot-${item.kind}`,"aria-hidden":true}), item.label),
+          e("p", {className:"risk-item-status"}, item.status), e("p", null, item.reason),
+          e("p", {className:"risk-next-step"}, e("strong", null, "Next step: "), item.action))))),
+      e("p", {className:"risk-footnote"}, "This rating reflects the information currently entered in JAN CPT. Review missing or outdated entries before relying on it.")));
+}
+
 function Dashboard({
   current,
   rows,
@@ -2084,30 +2247,14 @@ function Dashboard({
   execSum,
   pay,
   meta,
-  projectId
+  projectId,
+  grant,
+  onNavigate
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
-  }, /*#__PURE__*/React.createElement("section", {
-    className: "panel rise",
-    style: {
-      marginTop: 0
-    }
-  }, /*#__PURE__*/React.createElement("h2", null, "Executive Summary"), /*#__PURE__*/React.createElement("div", {
-    className: "exec-grid"
-  }, execSum.rows.map(([label, kind, text], i) => /*#__PURE__*/React.createElement("div", {
-    key: label,
-    className: "exec-cell rise" + (label === "Risk Level" ? " exec-risk" : ""),
-    style: {
-      animationDelay: `${i * 45}ms`
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: `dot-ind dot-${kind}`
-  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "exec-metric"
-  }, label), /*#__PURE__*/React.createElement("div", {
-    className: "exec-status"
-  }, text)))))), /*#__PURE__*/React.createElement(MunisUpdateLauncher, {
+  }, React.createElement(ExecutiveSummary, {execSum, projectId, onNavigate,
+    riskDetails:buildProjectRiskExplanation({execSum,grant,meta,current,pay})}), /*#__PURE__*/React.createElement(MunisUpdateLauncher, {
     projectId: projectId
   }), /*#__PURE__*/React.createElement(LastWalkthrough, {
     projectId: projectId
@@ -4185,6 +4332,33 @@ main{max-width:1080px;margin:0 auto}
 .exec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .exec-cell{display:flex;gap:10px;align-items:flex-start;background:#F7FBFE;border:1px solid var(--line);border-radius:10px;padding:11px 13px}
 .exec-risk{border-color:var(--blue);background:#F1F6FB}
+.exec-cell-copy{display:block;min-width:0}.exec-cell-copy>.exec-metric,.exec-cell-copy>.exec-status{display:block}
+.exec-risk-button{font:inherit;text-align:left;cursor:pointer;width:100%;appearance:none;transition:background .18s,box-shadow .18s}
+.exec-risk-button:hover,.exec-risk-button[aria-expanded="true"]{background:#E6F2FA;box-shadow:0 3px 12px #123d5d16}
+.exec-risk-button:focus-visible,.risk-review:focus-visible,.risk-close:focus-visible,.risk-other-checks>summary:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
+.exec-risk-hint{display:block;font-size:11px;font-weight:600;color:var(--blue);margin-top:5px}
+.exec-risk-chevron{margin-left:auto;font-size:20px;line-height:1;color:var(--blue)}
+.risk-details{margin-top:18px;border-top:1px solid var(--line);padding-top:20px;animation:riskReveal .22s ease-out both}
+.risk-details-head,.risk-item-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.risk-details h3{font-family:var(--disp);color:var(--blue);font-size:23px;margin:8px 0 0}
+.risk-details h4{font-family:var(--disp);font-size:16px;color:var(--blue);margin:20px 0 10px}
+.risk-details h5{font-family:var(--body);font-size:14px;color:var(--blue);margin:0}
+.risk-rating,.risk-priority{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700;white-space:nowrap}
+.risk-rating-red,.risk-priority-red{background:#FDE9E7;color:#9E302B}.risk-rating-amber,.risk-priority-amber{background:#FFF2CC;color:#775500}.risk-rating-green{background:#E5F4EB;color:#246541}
+.risk-summary{font-size:14px;line-height:1.6;margin:10px 0 4px;color:var(--ink)}
+.risk-rule,.risk-footnote{font-size:12px;line-height:1.55;color:var(--dim)}.risk-rule{margin:0}.risk-footnote{border-top:1px solid var(--line);padding-top:12px;margin:18px 0 0}
+.risk-attention-grid,.risk-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.risk-item{padding:16px;border:1px solid var(--line);border-left:4px solid var(--amber);border-radius:10px;background:#FFFCF4;min-width:0}
+.risk-item-red{border-left-color:var(--red);background:#FFF8F7}
+.risk-item p,.risk-check p{font-size:13px;line-height:1.55;color:var(--ink);margin:8px 0;overflow-wrap:anywhere}
+.risk-item .risk-item-status,.risk-check .risk-item-status{font-weight:600}.risk-next-step{padding-top:3px}.risk-review{min-height:40px;margin-top:5px;white-space:normal;text-align:left}
+.risk-clear{padding:13px 15px;background:#F1F8F4;border:1px solid #D5E8DB;border-radius:9px;font-size:13px;line-height:1.6}
+.risk-other-checks{margin-top:16px}.risk-other-checks>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--blue);padding:10px 0}
+.risk-check{padding:13px;border:1px solid var(--line);border-radius:9px;background:#F7FBFE;min-width:0}.risk-check h5{display:flex;align-items:center;gap:8px}.risk-check h5 .dot-ind{margin:0;width:9px;height:9px}
+@keyframes riskReveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){.risk-attention-grid,.risk-check-grid{grid-template-columns:1fr}.risk-details-head{align-items:center}.risk-review,.risk-close{min-height:44px}.risk-details h3{font-size:21px}.risk-item{padding:13px}}
+@media(prefers-reduced-motion:reduce){.risk-details{animation:none}.exec-risk-button{transition:none}}
+@media print{.exec-risk-hint,.exec-risk-chevron,.risk-close,.risk-review{display:none}.risk-details{animation:none}.risk-item,.risk-check{break-inside:avoid}}
 .dot-ind{width:12px;height:12px;border-radius:50%;flex:none;margin-top:3px}
 .dot-green{background:var(--green)}.dot-amber{background:var(--amber)}.dot-red{background:var(--red);animation:alertPulse 1.7s ease-in-out infinite}
 .dot-neutral{background:var(--dim)}
