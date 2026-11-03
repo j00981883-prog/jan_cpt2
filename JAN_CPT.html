@@ -4417,16 +4417,25 @@ button.cloud-type:hover{background:rgba(46,155,214,.22);border-color:#6DB5DE}
 .munis-launcher{display:flex;align-items:center;gap:12px;max-width:100%;margin:16px 0 20px;padding:11px 16px 11px 11px;border:1px solid #C7DDEB;border-radius:14px;background:#fff;color:#0B3D6E;text-align:left;font:inherit;cursor:pointer;box-shadow:0 4px 14px rgba(7,26,51,.08);transition:transform .16s,box-shadow .16s,border-color .16s}
 .munis-launcher:hover{transform:translateY(-2px);border-color:#339ACB;box-shadow:0 7px 20px rgba(7,26,51,.14)}
 .munis-launcher:focus-visible{outline:3px solid #F2A900;outline-offset:4px}
-.munis-launcher-logo{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:12px;background:linear-gradient(145deg,#0B3D6E,#1479AB);color:#fff;font:800 23px/1 var(--disp);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.munis-launcher-logo{display:grid;place-items:center;width:44px;height:44px;flex:none;border-radius:12px;background:linear-gradient(145deg,#0B3D6E,#1479AB);color:#fff;font:800 23px/1 var(--disp);box-shadow:inset 0 1px 0 rgba(255,255,255,.2);transition:transform .3s cubic-bezier(.2,.8,.3,1.35)}
+.munis-launcher:hover .munis-launcher-logo{transform:rotate(-5deg) translateY(-1px)}
 .munis-launcher-label{font-size:14px;font-weight:800}.munis-launcher-label small{display:block;margin-top:4px;font-size:11px;font-weight:400;color:#6A8093}.munis-launcher-arrow{margin-left:12px;font-size:20px;color:#497B99}
-dialog.munis-modal{position:fixed;margin:auto;border:0;color:#18334C;max-height:calc(100dvh - 32px);width:calc(100% - 32px);box-sizing:border-box;box-shadow:0 24px 80px rgba(0,0,0,.24)}
-dialog.munis-modal::backdrop{background:rgba(7,26,51,.62)}
+dialog.munis-modal{position:fixed;margin:auto;border:0;color:#18334C;max-height:calc(100dvh - 32px);width:calc(100% - 32px);box-sizing:border-box;box-shadow:0 24px 80px rgba(0,0,0,.24);animation:munisSlideIn .44s cubic-bezier(.16,1,.3,1) both}
+dialog.munis-modal.is-closing{animation:munisSlideOut .2s ease-in both}
+dialog.munis-modal::backdrop{background:rgba(7,26,51,.62);animation:munisBackdropIn .3s ease both}
+dialog.munis-modal.is-closing::backdrop{animation:munisBackdropOut .2s ease both}
+@keyframes munisSlideIn{0%{opacity:0;transform:translateX(72px) scale(.98)}72%{opacity:1;transform:translateX(-5px) scale(1)}100%{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes munisSlideOut{to{opacity:0;transform:translateX(48px) scale(.985)}}
+@keyframes munisSheetIn{0%{opacity:0;transform:translateY(56px) scale(.985)}72%{opacity:1;transform:translateY(-4px) scale(1)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes munisSheetOut{to{opacity:0;transform:translateY(42px) scale(.985)}}
+@keyframes munisBackdropIn{from{opacity:0}to{opacity:1}}
+@keyframes munisBackdropOut{from{opacity:1}to{opacity:0}}
 .munis-view-switch{display:flex;gap:6px;padding:4px;background:#EDF4F8;border:1px solid #D8E5EE;border-radius:11px;margin:18px 0}
 .munis-view-switch button{flex:1;min-height:42px;border:0;border-radius:8px;padding:8px 16px;font:600 13px/1.3 inherit;color:#557187;background:transparent;cursor:pointer}
 .munis-view-switch button[aria-pressed="true"]{background:#0B3D6E;color:white;box-shadow:0 3px 8px rgba(11,61,110,.15)}
 .munis-view-switch button:focus-visible{outline:3px solid #F2A900;outline-offset:2px}.munis-modal .munis-status-card{margin-top:0}
-@media(prefers-reduced-motion:reduce){.munis-launcher{transition:none}.munis-launcher:hover{transform:none}}
-@media(max-width:480px){dialog.munis-modal{padding:20px 16px}.munis-launcher{width:100%}.munis-launcher-arrow{margin-left:auto}}
+@media(prefers-reduced-motion:reduce){.munis-launcher,.munis-launcher-logo{transition:none}.munis-launcher:hover,.munis-launcher:hover .munis-launcher-logo{transform:none}dialog.munis-modal,dialog.munis-modal::backdrop{animation:none!important}}
+@media(max-width:480px){dialog.munis-modal{padding:20px 16px;animation-name:munisSheetIn}dialog.munis-modal.is-closing{animation-name:munisSheetOut}.munis-launcher{width:100%}.munis-launcher-arrow{margin-left:auto}}
 .munis-simple::before,.munis-simple::after{display:none}.munis-simple .munis-status-head{margin-bottom:8px;flex-wrap:wrap}.munis-summary{margin:0;color:#40576B;font-size:14px;line-height:1.5}.munis-last-report{color:#718699;font-size:12px;line-height:1.5;margin:8px 0;overflow-wrap:anywhere}.munis-last-report strong{font-weight:500;color:#40576B}.munis-simple-actions{display:flex;justify-content:flex-end}.munis-details{margin-top:8px;border-top:1px solid #E0EAF1;padding-top:10px;font-size:13px;color:#40576B;overflow-wrap:anywhere}.munis-details summary{cursor:pointer;color:#0B3D6E;font-weight:700;padding:5px 0}.munis-details summary:focus-visible{outline:2px solid #1479AB;outline-offset:3px}.munis-status-state.is-error{color:#A32626;background:#FBE9E9}
 .munis-status-card::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(180deg,#2E9BD6,#0B3D6E 62%,#F2A900)}
 .munis-status-card::after{content:"";position:absolute;width:170px;height:170px;border-radius:50%;right:-92px;top:-108px;background:rgba(46,155,214,.07);pointer-events:none}
@@ -6032,12 +6041,30 @@ function munisKey(value) {
 
 function MunisSyncDemo({ projects = [], projectId = null, onClose }) {
   const [view, setView] = useState("updates");
+  const [closing, setClosing] = useState(false);
   const dialogRef = React.useRef(null);
+  const closeTimer = React.useRef(null);
+  const closeRequested = React.useRef(false);
+  const closeFinished = React.useRef(false);
+  function finishClose() {
+    if(closeFinished.current)return;
+    closeFinished.current=true;
+    clearTimeout(closeTimer.current);
+    onClose();
+  }
+  function requestClose() {
+    if(closeRequested.current)return;
+    closeRequested.current=true;
+    if(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches){finishClose();return;}
+    setClosing(true);
+    // Still dismiss if an animation is interrupted or disabled mid-close.
+    closeTimer.current=setTimeout(finishClose,280);
+  }
   useEffect(()=>{
     const opener = document.activeElement;
     const dialog = dialogRef.current;
     dialog.showModal();
-    return ()=>{dialog.close();if(opener?.isConnected)opener.focus();};
+    return ()=>{clearTimeout(closeTimer.current);dialog.close();if(opener?.isConnected)opener.focus();};
   },[]);
   const [fileName, setFileName] = useState("");
   const [records, setRecords] = useState([]);
@@ -6080,13 +6107,14 @@ function MunisSyncDemo({ projects = [], projectId = null, onClose }) {
   }
   return /*#__PURE__*/React.createElement("dialog", {
     ref: dialogRef,
-    className: "cloud-modal munis-modal",
+    className: "cloud-modal munis-modal" + (closing ? " is-closing" : ""),
     "aria-label": "MUNIS updates",
-    onCancel: e=>{e.preventDefault();onClose();}
+    onCancel: e=>{e.preventDefault();requestClose();},
+    onAnimationEnd:e=>{if(e.target===e.currentTarget && closeRequested.current && /^(munisSlideOut|munisSheetOut)$/.test(e.animationName))finishClose();}
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "cloud-modal-close",
-    onClick: onClose,
+    onClick: requestClose,
     "aria-label": "Close MUNIS updates",
     autoFocus: true
   }, "×"), /*#__PURE__*/React.createElement("h3", {
@@ -6129,7 +6157,7 @@ function MunisSyncDemo({ projects = [], projectId = null, onClose }) {
     className: "cloud-modal-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: "cloud-btn cloud-btn-ghost",
-    onClick: onClose
+    onClick: requestClose
   }, "Close")));
 }
 
