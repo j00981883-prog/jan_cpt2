@@ -83,9 +83,59 @@ test('project navigation and changed values invalidate approval', async () => {
 test('follow-up carries prior question and clarification to AI in update mode', async () => {
   const s = setup(); await s.send('update the budget'); await s.send('23 dollars');
   assert.equal(s.calls[1].mode, 'update');
-  assert.match(s.calls[1].question, /update the budget/);
-  assert.match(s.calls[1].question, /What amount/);
-  assert.match(s.calls[1].question, /23 dollars/);
+  assert.equal(s.calls[1].question, '23 dollars');
+  assert.deepEqual(JSON.parse(JSON.stringify(s.calls[1].history)), [
+    { role: 'user', content: 'update the budget' },
+    { role: 'assistant', content: 'What amount?' }
+  ]);
+  assert.equal(s.calls[1].targetProject.id, 'p1');
+  assert.equal(s.calls[1].projectContext, undefined);
+  assert.equal(s.calls[1].editorCapabilities, undefined);
+});
+
+test('polite editing requests propose changes while how-to and hypothetical questions remain read-only', async () => {
+  for (const question of ['Can you change the project manager to Joyce?', 'Could you please update the budget?', "I'd like you to set the start date to tomorrow."]) {
+    const s = setup(); await s.send(question);
+    assert.equal(s.calls[0].mode, 'update');
+    assert.equal(s.applied.length, 0);
+  }
+  for (const question of ['How do I change the budget?', 'What would happen if I delete a pay application?']) {
+    const s = setup(); await s.send(question);
+    assert.equal(s.calls[0].mode, 'ask');
+    assert.equal(s.applied.length, 0);
+  }
+  const viewer = setup(); await viewer.send('Could you update the budget?', false);
+  assert.equal(viewer.calls[0].mode, 'ask');
+});
+
+test('a new question leaves an edit clarification without turning the question into an edit', async () => {
+  for (const question of ['What grants need attention?', 'Tell me about this project', 'Could you explain the budget?', 'Would you please review the grant milestones?', 'Will you summarize the risks?']) {
+    const s = setup(); await s.send('update the budget');
+    await s.send(question);
+    assert.equal(s.calls[1].mode, 'ask');
+    await s.send('Tell me more');
+    assert.equal(s.calls[2].mode, 'ask');
+  }
+});
+
+test('change previews use readable record names, currency, percentages and dates', () => {
+  const { context: c } = setup();
+  const preview = c.aiPreview({ type: 'payapp', number: 1, workCompleted: 1250.5, retainagePct: 0.05, periodEnd: '2026-11-03' }, sample());
+  assert.match(preview, /Pay application 1: Work completed: \$50/);
+  assert.match(preview, /Work completed: \$1,250.50/);
+  assert.match(preview, /Retainage: 5.00%/);
+  assert.match(preview, /Period ending: 11\/03\/2026/);
+  assert.doesNotMatch(preview, /payapp|workCompleted|retainagePct|periodEnd/);
+  assert.throws(() => c.validateAIChanges([{ type: 'payapp', number: 1, workCompleted: -1 }], sample()), /Work completed cannot be negative/);
+});
+
+test('edit starter prompts fill the composer without requesting or applying sample changes', () => {
+  const s = setup(); s.button(s.render(), 'Update data').props.onClick();
+  s.button(s.render(), 'Change a budget').props.onClick();
+  const input = s.all(s.render()).find(n => n.tag === 'input' && n.props.value !== undefined);
+  assert.equal(input.props.value, 'Change the construction budget to ');
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.applied.length, 0);
 });
 test('cancel and revoked editor access cannot apply proposals', async () => {
   const s = setup(); await s.send('set construction budget to 23'); await s.send('cancel'); await s.send('yes');
@@ -119,10 +169,40 @@ test('failed AI service request unlocks the form for retry', async () => {
   await s.send('set construction budget to 23');
   await s.send('yes'); assert.equal(s.applied.length, 1);
 });
+
+test('retry resends the failed question but cannot retarget a different project', async () => {
+  const s = setup(); let failures = 0;
+  s.context.sb.functions.invoke = async (_name, payload) => { failures++; s.calls.push(payload.body); throw new Error('Request timed out'); };
+  await s.send('review project risks');
+  assert.ok(s.all(s.render()).some(n => n.children.some(child => typeof child === 'string' && child.includes('That took longer than expected'))));
+  await s.button(s.render(), 'Try again').props.onClick();
+  assert.equal(failures, 2);
+  assert.equal(s.calls[1].question, 'review project risks');
+  assert.ok(s.calls[1].history.every(turn => !turn.content.includes('That took longer')));
+  s.context.window.JMAA_APPLY = { ...s.bridge, projectId: 'p2' };
+  const retry = s.button(s.render(), 'Try again');
+  assert.equal(retry.props.disabled, true);
+  await retry.props.onClick();
+  assert.equal(failures, 2);
+  assert.equal(s.applied.length, 0);
+});
+
+test('retrying an old yes never approves a newer proposal', async () => {
+  const s = setup();
+  s.context.sb.functions.invoke = async () => { throw new Error('Request timed out'); };
+  await s.send('yes');
+  await s.send('set construction budget to 23');
+  assert.ok(s.button(s.render(), 'Apply change'));
+  assert.equal(s.applied.length, 0);
+  await s.button(s.render(), 'Try again').props.onClick();
+  assert.equal(s.applied.length, 0);
+  assert.equal(s.button(s.render(), 'Apply change'), undefined);
+});
 test('fresh chat clears a pending proposal and conversation', async () => {
   const s = setup(); await s.send('set construction budget to 23');
   s.button(s.render(), 'New chat').props.onClick();
   await s.send('yes');
   assert.equal(s.applied.length, 0);
   assert.doesNotMatch(s.calls[0].question, /set construction budget to 23/);
+  assert.equal(s.calls[0].history.length, 0);
 });
