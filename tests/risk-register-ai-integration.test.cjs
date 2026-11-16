@@ -48,7 +48,7 @@ test('risk request targets the open project, forwards cancellation and force, an
   assert.equal(invocation.payload.body.force, true);
   assert.equal('history' in invocation.payload.body, false);
   assert.equal('documentRefs' in invocation.payload.body, false);
-  assert.equal(env.calls.find(call => call.milliseconds).milliseconds, 90000);
+  assert.equal(env.calls.find(call => call.milliseconds).milliseconds, 135000);
   await env.c.requestProjectRiskReview('project-current', { force: 'true' });
   assert.equal(env.calls.filter(call => call.payload)[1].payload.body.force, false);
 });

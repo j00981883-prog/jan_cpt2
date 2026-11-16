@@ -313,6 +313,7 @@
             h('button', { type: 'button', className: 'rr-button rr-button-secondary', disabled: generating || !!draft || saving, onClick: function () { return generate(true); } }, generating ? 'Reviewing…' : generationError ? 'Retry AI review' : 'Refresh AI risks'),
             generating && typeof props.onCancelGenerate === 'function' ? h('button', { type: 'button', className: 'rr-button rr-button-quiet', disabled: /^saving/i.test(text(props.generationStatus)), onClick: cancelGeneration }, 'Cancel review') : null) : null),
         h('div', { className: 'rr-ai-live', role: 'status', 'aria-live': 'polite' }, generationMessage),
+        generating ? h('p', { className: 'rr-hint' }, 'A full review may take a couple of minutes. You can cancel while the AI is reviewing; existing risks remain saved.') : null,
         generationError ? h('p', { className: 'rr-error', role: 'alert' }, generationError) : null,
         draft && canGenerate ? h('p', { className: 'rr-hint' }, 'Save or cancel your draft before starting an AI review.') : null,
         review ? h(AIReviewDetails, { review: review }) : h('p', { className: 'rr-hint' }, generating ? 'The register will update after the review is saved.' : props.isEditor ? 'No AI review has been saved yet.' : 'An editor can review this project with AI. No AI review has been saved yet.')) : null,

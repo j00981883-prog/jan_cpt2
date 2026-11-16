@@ -60,9 +60,9 @@ window.addEventListener("error", function (e) {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./grant-reminders.js?v=grant-recovery-20261103"></script>
 <script src="./presentation-tour.js?v=20261103"></script>
-<link rel="stylesheet" href="./risk-register.css?v=20261116-ai-1" />
-<script src="./risk-register-core.js?v=20261116-ai-1"></script>
-<script src="./risk-register-ui.js?v=20261116-ai-1"></script>
+<link rel="stylesheet" href="./risk-register.css?v=20261116-ai-2" />
+<script src="./risk-register-core.js?v=20261116-ai-2"></script>
+<script src="./risk-register-ui.js?v=20261116-ai-2"></script>
 <script>
 const {
   useState,
@@ -936,7 +936,7 @@ async function persistProjectRiskRegister(projectId,riskRegister,expectedRegiste
 async function requestProjectRiskReview(projectId,{force=false,signal}={}){
   const {data,error}=await requestWithTimeout(sb.functions.invoke("assistant",{
     body:{mode:"risk-register",question:"Identify and update the risks supported by this project's saved records and available files.",targetProject:{id:projectId},force:force===true},signal
-  }),"AI risk review",90000);
+  }),"AI risk review",135000);
   if(signal?.aborted)throw new Error("AI review canceled. No AI risks were saved.");
   if(error){
     let detail;try{detail=await error.context?.json();}catch{}

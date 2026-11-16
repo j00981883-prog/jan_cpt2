@@ -24,6 +24,8 @@ The browser saves validated results through the same narrow conditional metadata
 
 Automatic openings reuse a saved review when its evidence fingerprint, model, and Chicago calendar day have not changed. Refresh AI review explicitly rechecks. Reviews run on opening, not on a background schedule. The tab shows progress and an actionable error on failure; it does not retry endlessly. Leaving during analysis cancels the local request and prevents a late analysis result from saving. Once the brief database save starts, navigation waits for it to finish. Failed generation does not replace existing risks.
 
+Risk reviews have a dedicated 100-second provider deadline that covers both response headers and the body, with a 135-second browser deadline allowing time for evidence loading. Concise output guidance and a 4,800-token response limit reduce long report generation. A true timeout is distinguished from a connection failure. Server diagnostics contain only mode, model, source counts, elapsed time, and provider status; they exclude project records, file contents, identifiers, and credentials.
+
 Deployment requires uploading `index.ts`, `context.mjs`, `documents.mjs`, and `risks.mjs` together, keeping JWT verification enabled. The existing server-only `ANTHROPIC_API_KEY` and optional `JAN_AI_MODEL` configuration are reused.
 
 ## Verification
