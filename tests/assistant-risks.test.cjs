@@ -138,8 +138,33 @@ test('Sonnet 5 uses the output budget for JSON while other model families retain
  for(const configured of ['', 'claude-sonnet-5', 'claude-sonnet-5-20260901', 'claude-sonnet-5-5', 'claude-sonnet-5-5-20261001', 'custom-model']){
   const env=environment({model:configured,output:output([])});await env.run();const request=env.provider[0].request;
   assert.equal(request.max_tokens,4800);
-  if(!configured||configured==='claude-sonnet-5'||configured==='claude-sonnet-5-20260901')assert.deepEqual(request.thinking,{type:'disabled'});
-  else assert.equal(Object.prototype.hasOwnProperty.call(request,'thinking'),false);
+  if(!configured||configured==='claude-sonnet-5'||configured==='claude-sonnet-5-20260901'){
+   assert.deepEqual(request.thinking,{type:'disabled'});assert.equal(request.output_config.format.type,'json_schema');
+  }else{assert.equal(Object.prototype.hasOwnProperty.call(request,'thinking'),false);assert.equal(Object.prototype.hasOwnProperty.call(request,'output_config'),false);}
+ }
+});
+
+test('native Sonnet 5 JSON schema restricts evidence to supplied sources and leaves semantic bounds to validation',async()=>{
+ const env=environment({model:'claude-sonnet-5',tables:{documents:[dashboard()],sharepoint_documents:[sp()],sharepoint_file_contents:[cache()]}});
+ await env.run();const schema=env.provider[0].request.output_config.format.schema;
+ assert.deepEqual(schema.required,['risks','summary','limitations']);assert.equal(schema.additionalProperties,false);
+ assert.deepEqual(Object.keys(schema.properties).sort(),['limitations','risks','summary']);
+ const item=schema.properties.risks.items;
+ assert.deepEqual(Object.keys(item.properties).sort(),['description','evidence','impact','key','likelihood','mitigation','ratingReason','reviewDate','title']);
+ assert.equal(item.additionalProperties,false);assert.deepEqual(item.properties.likelihood.enum,[1,2,3,4,5]);assert.deepEqual(item.properties.impact.enum,[1,2,3,4,5]);
+ const evidence=item.properties.evidence.items;
+ assert.deepEqual(evidence.required,['sourceId','detail']);assert.equal(evidence.additionalProperties,false);
+ assert.deepEqual(evidence.properties.sourceId.enum,['project:p1','document:d1','sharepoint:s1']);
+ assert.equal(item.properties.reviewDate.format,'date');assert.ok(!item.required.includes('reviewDate'));
+ function checkSupported(node){if(!node||typeof node!=='object')return;for(const [key,value]of Object.entries(node)){assert.ok(!['minimum','maximum','minLength','maxLength','maxItems'].includes(key),'Unsupported provider schema keyword: '+key);if(key==='minItems')assert.ok([0,1].includes(value));checkSupported(value);}}
+ checkSupported(schema);
+ const {validateRiskOutput}=await helper;assert.throws(()=>validateRiskOutput(output([proposed({description:'x'.repeat(2001)})]),[source]));
+});
+
+test('native structured output still rejects malformed JSON rather than salvaging partial or fenced content',async()=>{
+ for(const rawText of ['```json\n'+JSON.stringify(output([]))+'\n```','{"risks":[','prefix '+JSON.stringify(output([]))]){
+  const env=environment({model:'claude-sonnet-5',rawText}),before=JSON.stringify(env.tables);
+  await assert.rejects(env.run(),error=>error.status===422&&/malformed JSON/.test(error.message));assert.equal(JSON.stringify(env.tables),before);
  }
 });
 
