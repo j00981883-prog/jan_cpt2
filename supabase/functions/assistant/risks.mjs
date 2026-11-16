@@ -8,6 +8,7 @@ const stable = value => Array.isArray(value) ? value.map(stable) : isObject(valu
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
 const textKey = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const briefName = value => String(value || 'Unnamed file').slice(0, 160);
+const safeStopReason = value => ['end_turn', 'max_tokens', 'refusal', 'stop_sequence', 'tool_use', 'pause_turn', 'model_context_window_exceeded'].includes(value) ? value : 'unknown';
 
 export function chicagoToday(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
@@ -200,7 +201,9 @@ export async function handleRiskRegister({ client, targetProject, force = false,
     });
     data = await Promise.race([deadline, (async () => {
       const response = await fetchImpl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify({ model, max_tokens: 4800, system: RISK_SYSTEM, messages: [{ role: 'user', content }] }), signal: providerController.signal });
+        // Sonnet 5 enables adaptive thinking by default, consuming the same
+        // output budget as the JSON. Other model families keep their defaults.
+        body: JSON.stringify({ model, max_tokens: 4800, ...(/^claude-sonnet-5(?:-\d{8})?$/.test(model) ? { thinking: { type: 'disabled' } } : {}), system: RISK_SYSTEM, messages: [{ role: 'user', content }] }), signal: providerController.signal });
       providerStatus = response.status;
       if (!response.ok) {
         if (response.status === 401) throw fail('The AI provider rejected the server key. An administrator must update ANTHROPIC_API_KEY in Supabase secrets.', 502, 'AI_KEY_INVALID');
@@ -220,9 +223,10 @@ export async function handleRiskRegister({ client, targetProject, force = false,
     throw fail('The AI risk review could not connect. Retry; nothing was saved.', 503, 'AI_CONNECTION_ERROR');
   } finally {
     clearTimeout(providerTimer);
-    console.info('JAN AI risk review', JSON.stringify({ mode: 'risk-register', model, sourceCount: sources.length, documentCount: fileSources.length, elapsedMs: Date.now() - providerStarted, status: providerStatus }));
+    console.info('JAN AI risk review', JSON.stringify({ mode: 'risk-register', model, sourceCount: sources.length, documentCount: fileSources.length, elapsedMs: Date.now() - providerStarted, status: providerStatus,
+      stopReason: data ? safeStopReason(data.stop_reason) : null, outputTokens: Number.isInteger(data?.usage?.output_tokens) && data.usage.output_tokens >= 0 ? data.usage.output_tokens : null }));
   }
-  if (data.stop_reason !== 'end_turn') throw fail('The AI risk review did not finish. Retry; nothing was saved.', 422);
+  if (data.stop_reason !== 'end_turn') throw fail('The AI risk review did not finish (stop reason: ' + safeStopReason(data.stop_reason) + '). Retry; nothing was saved.', 422, 'AI_OUTPUT_INCOMPLETE');
   try { parsed = JSON.parse(list(data.content).filter(block => block.type === 'text').map(block => block.text).join('\n').trim()); }
   catch { throw fail('The AI risk review returned malformed JSON. Retry; nothing was saved.', 422); }
   const output = validateRiskOutput(parsed, sources);
