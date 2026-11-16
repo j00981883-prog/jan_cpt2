@@ -19,6 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import { evidenceBriefing } from './context.mjs';
 import { readAssistantRequest, loadAiDocuments, buildSelectedFileContent } from './documents.mjs';
+import { handleRiskRegister } from './risks.mjs';
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -32,13 +33,13 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({error:'POST required'},405);
 
   try {
-    const { question, history, mode, document: suppliedDoc, charterText, targetProject, documentId, documentRefs } = await readAssistantRequest(req);
+    const { question, history, mode, force, document: suppliedDoc, charterText, targetProject, documentId, documentRefs } = await readAssistantRequest(req);
     const doc=suppliedDoc;
-    if (typeof question !== "string" || !question.trim()) {
+    if (mode !== 'risk-register' && (typeof question !== "string" || !question.trim())) {
       return json({ error: "Ask a question." }, 400);
     }
-    if(question.length>60000)return json({error:'Please shorten the conversation or start a new chat.'},400);
-    if(!['ask','update','risk','memo','grade','charter','docfield',undefined].includes(mode))return json({error:'Unknown assistant mode.'},400);
+    if(typeof question==='string' && question.length>60000)return json({error:'Please shorten the conversation or start a new chat.'},400);
+    if(!['ask','update','risk','risk-register','memo','grade','charter','docfield',undefined].includes(mode))return json({error:'Unknown assistant mode.'},400);
 
     // Use the caller's verified session and existing row/storage policies.
     const admin = createClient(
@@ -48,10 +49,11 @@ Deno.serve(async (req) => {
     );
     const {data:auth,error:authError}=await admin.auth.getUser();
     if(authError||!auth.user)return json({error:'Sign in again to use JAN AI.'},401);
-    if(mode==='update'){
+    if(mode==='update' || mode==='risk-register'){
       const {data:profile}=await admin.from('profiles').select('role').eq('id',auth.user.id).single();
       if(profile?.role!=='editor')return json({error:'An editor account is required to propose project changes.'},403);
     }
+    if(mode==='risk-register')return json(await handleRiskRegister({client:admin,targetProject,force,env:name=>Deno.env.get(name),fetchImpl:fetch}));
     const results = await Promise.all([
       admin.from("projects").select("*").order("created_at"),
       admin.from("weekly_actuals").select("*").order('week_no'),
@@ -368,7 +370,7 @@ Deno.serve(async (req) => {
     return json({ error: why + ` (stop reason: ${stop}; content: ${kinds})` });
   } catch (e) {
     const status = (e as Error & {status?:number}).status;
-    return json({ error: (e as Error).message || String(e) }, status && [400,403,409,413,503].includes(status) ? status : 500);
+    return json({ error: (e as Error).message || String(e), ...((e as Error & {code?:string}).code ? {code:(e as Error & {code?:string}).code} : {}) }, status && [400,401,403,409,413,422,429,502,503].includes(status) ? status : 500);
   }
 });
 

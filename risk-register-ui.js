@@ -9,6 +9,18 @@
       'risk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   }
   function text(value) { return value == null ? '' : String(value); }
+  function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+  function safeSourceUrl(value) {
+    if (typeof value !== 'string' || !/^https?:\/\//i.test(value) || /[\u0000-\u0020\u007f]/.test(value)) return null;
+    try {
+      var parsed = new root.URL(value);
+      return /^https?:$/.test(parsed.protocol) && parsed.hostname && !parsed.username && !parsed.password ? parsed.href : null;
+    } catch (_) { return null; }
+  }
+  function dateTimeLabel(value) {
+    var parsed = typeof value === 'string' && value ? new Date(value) : null;
+    return parsed && !isNaN(parsed.getTime()) ? parsed.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : 'Not recorded';
+  }
   function dateLabel(value) {
     if (!value) return 'Not scheduled';
     var raw = text(value);
@@ -39,18 +51,54 @@
           h('span', { className: 'rr-badge rr-badge-red' }, 'High · 10–25')),
         h('p', { className: 'rr-muted' }, 'These thresholds are a tracking convention for this register; they are not an approved organizational risk policy. Closed risks remain in the register and are excluded from active totals.')));
   }
+  function Evidence(props) {
+    var evidence = props.evidence.filter(isRecord);
+    return evidence.length ? h('ul', { className: 'rr-evidence-list' }, evidence.map(function (entry, index) {
+      var name = text(entry.name || entry.source || entry.sourceId || 'Project record');
+      var url = safeSourceUrl(entry.url);
+      return h('li', { key: index },
+        url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, name) : h('strong', null, name),
+        entry.detail ? h('p', null, text(entry.detail)) : null);
+    })) : h('p', { className: 'rr-muted' }, 'No supporting evidence is recorded for this risk. Verify its basis before acting.');
+  }
+  function AIReviewDetails(props) {
+    var review = props.review;
+    var documents = Array.isArray(review.documentsRead) ? review.documentsRead.filter(isRecord) : [];
+    var limitations = Array.isArray(review.limitations) ? review.limitations.filter(function (entry) { return typeof entry === 'string' && entry.trim(); }) : [];
+    return h('div', { className: 'rr-ai-review-details' },
+      h('p', { className: 'rr-muted' }, 'Last AI review: ', h('strong', null, dateTimeLabel(review.generatedAt))),
+      review.summary ? h('p', { className: 'rr-ai-summary' }, text(review.summary)) : null,
+      h('details', { className: 'rr-ai-coverage' },
+        h('summary', null, 'Review coverage · ' + documents.length + ' file contents read'),
+        h('div', { className: 'rr-ai-coverage-body' },
+          h('p', null, 'Automatic reviews read up to 3 supported file contents. Other available files may be represented by metadata only.'),
+          documents.length ? h('ul', null, documents.map(function (document, index) {
+            var url = safeSourceUrl(document.url);
+            var name = text(document.name || document.id || 'Unnamed file');
+            return h('li', { key: index }, url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, name) : name);
+          })) : h('p', { className: 'rr-attention' }, 'No file contents were read in this review. A lack of identified risks is not confirmation that the project is risk-free.'),
+          limitations.length ? h('div', null, h('strong', null, 'Review limitations'),
+            h('ul', null, limitations.map(function (limitation, index) { return h('li', { key: index }, limitation); }))) : null)));
+  }
   function RiskCard(props) {
     var item = props.item;
     var assessment = root.JANRiskRegister.assess(item);
     var closed = item.status === 'closed';
+    var ai = isRecord(item.ai) ? item.ai : null;
     var status = closed ? 'Closed' : item.status === 'monitoring' ? 'Monitoring' : item.status === 'open' ? 'Open' : 'Status needs review';
     return h('article', { className: 'rr-risk rr-risk-' + (closed ? 'closed' : assessment.kind) },
       h('div', { className: 'rr-risk-heading' },
         h('div', { className: 'rr-risk-title' },
           h('span', { className: 'rr-status' }, status),
-          h('h3', null, item.title || 'Untitled risk')),
+          h('h3', null, item.title || 'Untitled risk'),
+          ai ? h('div', { className: 'rr-ai-labels' }, h('span', { className: 'rr-ai-tag' }, 'AI identified'), ai.userEdited ? h('span', { className: 'rr-muted' }, 'Edited by project team') : null) : null),
         h(StatusBadge, { item: item })),
       item.description ? h('p', { className: 'rr-copy' }, item.description) : null,
+      ai ? h('details', { className: 'rr-evidence' },
+        h('summary', null, 'Why this risk'),
+        h('div', { className: 'rr-evidence-body' },
+          h('p', null, text(ai.ratingReason) || 'No rating rationale is recorded.'),
+          h(Evidence, { evidence: Array.isArray(ai.evidence) ? ai.evidence : [] }))) : null,
       h('dl', { className: 'rr-facts' },
         h('div', null, h('dt', null, 'Rating'), h('dd', null, assessment.score == null ? 'Not rated' : item.likelihood + ' likelihood × ' + item.impact + ' impact')),
         h('div', null, h('dt', null, 'Owner'), h('dd', null, item.owner || 'Unassigned')),
@@ -76,14 +124,27 @@
     var errorsState = R.useState([]), errors = errorsState[0], setErrors = errorsState[1];
     var savingState = R.useState(false), saving = savingState[0], setSaving = savingState[1];
     var noticeState = R.useState(''), notice = noticeState[0], setNotice = noticeState[1];
+    var generatingState = R.useState(false), generating = generatingState[0], setGenerating = generatingState[1];
+    var generationErrorState = R.useState(''), generationError = generationErrorState[0], setGenerationError = generationErrorState[1];
+    var generationNoticeState = R.useState(''), generationNotice = generationNoticeState[0], setGenerationNotice = generationNoticeState[1];
     var busy = R.useRef(false);
+    var generationBusy = R.useRef(false);
+    var autoAttempted = R.useRef(false);
+    var generationToken = R.useRef(0);
+    var mounted = R.useRef(true);
+    var currentEditor = R.useRef(props.isEditor);
+    currentEditor.current = props.isEditor;
     var prefix = R.useRef('rr-' + uid());
     var formHeading = R.useRef(null);
     var errorsRef = R.useRef(null);
     var dirtyCallback = R.useRef(props.onDirtyChange);
     dirtyCallback.current = props.onDirtyChange;
     R.useEffect(function () {
-      return function () { if (typeof dirtyCallback.current === 'function') dirtyCallback.current(false); };
+      mounted.current = true;
+      return function () {
+        mounted.current = false;
+        if (typeof dirtyCallback.current === 'function') dirtyCallback.current(false);
+      };
     }, []);
     R.useEffect(function () {
       if (draft && formHeading.current) formHeading.current.focus();
@@ -91,12 +152,58 @@
     R.useEffect(function () {
       if (errors.length && errorsRef.current) errorsRef.current.focus();
     }, [errors]);
+    R.useEffect(function () {
+      if (props.autoGenerate !== false && props.isEditor && typeof props.onGenerate === 'function' && !draft && !saving && !autoAttempted.current) {
+        generate(false);
+      }
+    }, [props.autoGenerate, props.isEditor, props.onGenerate, !!draft, saving]);
+    async function generate(force) {
+      if (!props.isEditor || busy.current || generationBusy.current || draft || typeof props.onGenerate !== 'function') return;
+      autoAttempted.current = true;
+      generationBusy.current = true;
+      var token = ++generationToken.current;
+      setGenerating(true);
+      setGenerationError('');
+      setGenerationNotice('');
+      try {
+        var result = await props.onGenerate({ force: !!force });
+        if (token !== generationToken.current || !mounted.current || !currentEditor.current) return;
+        if (result === false) throw new Error('The AI review was not saved.');
+        result = isRecord(result) ? result : {};
+        var message = result.unchanged ? 'The review inputs are unchanged. The previous AI review is still available below.' : 'AI review saved.';
+        if (!result.unchanged && Number.isInteger(result.added) && result.added >= 0 && Number.isInteger(result.updated) && result.updated >= 0) {
+          message += ' ' + result.added + ' added; ' + result.updated + ' updated.';
+        }
+        setGenerationNotice(message);
+      } catch (error) {
+        if (token !== generationToken.current || !mounted.current || !currentEditor.current) return;
+        if (error && (error.name === 'AbortError' || /cancel(?:ed|led)/i.test(error.message || ''))) {
+          setGenerationNotice('AI review canceled. Your saved risks remain available.');
+        } else {
+          setGenerationError('AI review could not finish. Your saved risks remain available. ' + (error && error.message ? error.message : 'Try again when the connection is available.'));
+        }
+      } finally {
+        if (token === generationToken.current) {
+          generationBusy.current = false;
+          if (mounted.current) setGenerating(false);
+        }
+      }
+    }
+    function cancelGeneration() {
+      if (!generationBusy.current || typeof props.onCancelGenerate !== 'function' || /^saving/i.test(text(props.generationStatus))) return;
+      if (props.onCancelGenerate() === false) return;
+      generationToken.current++;
+      generationBusy.current = false;
+      setGenerating(false);
+      setGenerationError('');
+      setGenerationNotice('AI review canceled. Your saved risks remain available.');
+    }
     function setSession(next) {
       setDraft(next);
       if (typeof dirtyCallback.current === 'function') dirtyCallback.current(!!(next && next.dirty));
     }
     function begin(item, mode) {
-      if (!props.isEditor || busy.current || draft) return;
+      if (!props.isEditor || busy.current || generationBusy.current || draft) return;
       var next = item ? Object.assign({}, item) : {
         id: uid(), title: '', description: '', likelihood: '', impact: '', owner: '', mitigation: '',
         contingencyDollars: '', reviewDate: '', status: 'open', resolution: '', createdAt: '', updatedAt: ''
@@ -108,18 +215,18 @@
       setNotice('');
     }
     function change(field, value) {
-      if (!props.isEditor || busy.current || !draft) return;
+      if (!props.isEditor || busy.current || generationBusy.current || !draft) return;
       setSession(Object.assign({}, draft, { item: Object.assign({}, draft.item, { [field]: value }), dirty: true }));
     }
     function cancel() {
-      if (busy.current) return;
+      if (busy.current || generationBusy.current) return;
       setSession(null);
       setErrors([]);
       setNotice('Changes canceled.');
     }
     async function submit(event) {
       if (event && event.preventDefault) event.preventDefault();
-      if (!props.isEditor || busy.current || !draft) return;
+      if (!props.isEditor || busy.current || generationBusy.current || !draft) return;
       var validation = core.validate(draft.item);
       if (validation.length) { setErrors(validation); return; }
       if (typeof props.onSave !== 'function') { setErrors(['Saving is unavailable. Your draft is still here; try again when the project is connected.']); return; }
@@ -137,6 +244,7 @@
         createdAt: (currentItem && currentItem.createdAt) || draft.item.createdAt || now,
         updatedAt: now
       });
+      if (isRecord(item.ai)) item.ai = Object.assign({}, item.ai, { userEdited: true });
       var items = currentItem ? current.items.map(function (risk) { return risk.id === targetId ? item : risk; }) : current.items.concat([item]);
       var next = Object.assign({}, current, { items: items, updatedAt: now });
       busy.current = true;
@@ -185,6 +293,10 @@
       return (scoreB == null ? -1 : scoreB) - (scoreA == null ? -1 : scoreA);
     });
     var externalStatus = typeof props.saveStatus === 'string' ? props.saveStatus : props.saveStatus && props.saveStatus.message;
+    var review = isRecord(props.value) && isRecord(props.value.aiReview) ? props.value.aiReview : null;
+    var canGenerate = props.isEditor && typeof props.onGenerate === 'function';
+    var showAIReview = typeof props.onGenerate === 'function' || !!review;
+    var generationMessage = generating ? text(props.generationStatus) || 'Reviewing project records and available files…' : generationNotice;
     var editTitle = draft && (draft.mode === 'add' ? 'Add a risk' : draft.mode === 'close' ? 'Close risk' : draft.mode === 'reopen' ? 'Reopen risk' : 'Edit risk');
     return h('section', { className: 'rr-register', 'aria-label': 'Project risk register' },
       h('div', { className: 'rr-header' },
@@ -192,7 +304,18 @@
           h('p', { className: 'rr-eyebrow' }, props.projectTitle || 'Project controls'),
           h('h2', null, 'Risk register'),
           h('p', { className: 'rr-muted' }, 'Track what could affect delivery, who owns the response, and when to review it.')),
-        props.isEditor ? h('button', { className: 'rr-button rr-button-primary', type: 'button', disabled: !!draft || saving, onClick: function () { begin(null, 'add'); } }, '+ Add risk') : h('span', { className: 'rr-viewer' }, 'View only')),
+        props.isEditor ? h('button', { className: 'rr-button rr-button-primary', type: 'button', disabled: !!draft || saving || generating, onClick: function () { begin(null, 'add'); } }, '+ Add risk') : h('span', { className: 'rr-viewer' }, 'View only')),
+      showAIReview ? h('section', { className: 'rr-ai-panel', 'aria-label': 'AI project review', 'aria-busy': generating },
+        h('div', { className: 'rr-ai-panel-header' },
+          h('div', null, h('h3', null, 'AI project review'),
+            h('p', { className: 'rr-muted' }, 'Uses this project’s records and available files to identify risks. Your edits and closed risks are retained.')),
+          canGenerate ? h('div', { className: 'rr-ai-actions' },
+            h('button', { type: 'button', className: 'rr-button rr-button-secondary', disabled: generating || !!draft || saving, onClick: function () { return generate(true); } }, generating ? 'Reviewing…' : generationError ? 'Retry AI review' : 'Refresh AI risks'),
+            generating && typeof props.onCancelGenerate === 'function' ? h('button', { type: 'button', className: 'rr-button rr-button-quiet', disabled: /^saving/i.test(text(props.generationStatus)), onClick: cancelGeneration }, 'Cancel review') : null) : null),
+        h('div', { className: 'rr-ai-live', role: 'status', 'aria-live': 'polite' }, generationMessage),
+        generationError ? h('p', { className: 'rr-error', role: 'alert' }, generationError) : null,
+        draft && canGenerate ? h('p', { className: 'rr-hint' }, 'Save or cancel your draft before starting an AI review.') : null,
+        review ? h(AIReviewDetails, { review: review }) : h('p', { className: 'rr-hint' }, generating ? 'The register will update after the review is saved.' : props.isEditor ? 'No AI review has been saved yet.' : 'An editor can review this project with AI. No AI review has been saved yet.')) : null,
       h('div', { className: 'rr-metrics', 'aria-label': 'Risk totals' },
         h(Metric, { value: summary.counts.active, label: 'Active risks' }),
         h(Metric, { value: summary.counts.high, label: 'High priority' }),
@@ -228,15 +351,15 @@
         h('p', { className: 'rr-hint' }, 'Closing a risk preserves its information. Risks cannot be deleted from this register.')) : null,
       h('div', { className: 'rr-section-heading' }, h('h3', null, 'Active risks'), h('span', { className: 'rr-muted' }, 'Highest score first')),
       activeBySeverity.length ? h('div', { className: 'rr-risk-list' }, activeBySeverity.map(function (item) {
-        return h(RiskCard, { key: item.id, item: item, attention: attentionById[item.id], isEditor: props.isEditor, disabled: !!draft || saving, onEdit: begin });
+        return h(RiskCard, { key: item.id, item: item, attention: attentionById[item.id], isEditor: props.isEditor, disabled: !!draft || saving || generating, onEdit: begin });
       })) : h('div', { className: 'rr-empty' },
         h('strong', null, summary.closed.length ? 'No active risks.' : 'No risks recorded yet.'),
-        h('p', null, summary.closed.length ? 'Closed risks are retained below. Add a new risk as conditions change.' : props.isEditor ? 'Use Add risk to record a delivery concern, rate its likelihood and impact, and name an owner.' : 'An editor can add project risks, response actions, and review dates here.')),
+        h('p', null, generating ? 'AI is reviewing the available project information. Identified risks will appear here once the review is saved.' : summary.closed.length ? 'Closed risks are retained below. Add a new risk as conditions change.' : props.isEditor ? 'Use Add risk to record a delivery concern, rate its likelihood and impact, and name an owner.' : 'An editor can add project risks, response actions, and review dates here.')),
       summary.closed.length ? h('details', { className: 'rr-closed' },
         h('summary', null, 'Closed risks (' + summary.closed.length + ')'),
         h('p', { className: 'rr-muted' }, 'Retained for reference. Reopening a risk brings it back into active totals.'),
         h('div', { className: 'rr-risk-list' }, summary.closed.map(function (item) {
-          return h(RiskCard, { key: item.id, item: item, isEditor: props.isEditor, disabled: !!draft || saving, onEdit: begin });
+          return h(RiskCard, { key: item.id, item: item, isEditor: props.isEditor, disabled: !!draft || saving || generating, onEdit: begin });
         }))) : null);
   }
 

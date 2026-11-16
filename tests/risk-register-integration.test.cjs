@@ -146,7 +146,7 @@ function internalEnv(options = {}) {
         single() { calls.push(['single']); return query; },
         abortSignal(signal) {
           calls.push(['signal', signal]);
-          if (operation === 'read') return options.readResponse ? options.readResponse(signal) : Promise.resolve({ data: { id: 'project-1', meta: Object.prototype.hasOwnProperty.call(options, 'serverMeta') ? options.serverMeta : original }, error: null });
+          if (operation === 'read') return options.readResponse ? options.readResponse(signal) : Promise.resolve({ data: { id: 'project-1', updated_at: '2026-11-16T14:22:23.123456+00:00', meta: Object.prototype.hasOwnProperty.call(options, 'serverMeta') ? options.serverMeta : original }, error: null });
           return options.response ? options.response(signal) : Promise.resolve({ data: { id: 'project-1' }, error: null });
         }
       };
@@ -166,9 +166,10 @@ test('internal risk save only updates project metadata and verifies an affected 
   assert.deepEqual(Object.keys(payload), ['meta']);
   assert.deepEqual(plain(payload.meta), { ...before, riskRegister: register });
   assert.deepEqual(env.calls.find(call => call[0] === 'eq'), ['eq', 'id', 'project-1']);
-  assert.deepEqual(env.calls.filter(call => call[0] === 'select'), [['select', 'id,meta'], ['select', 'id']]);
+  assert.deepEqual(env.calls.filter(call => call[0] === 'select'), [['select', 'id,meta,updated_at'], ['select', 'id']]);
   assert.equal(env.calls.filter(call => call[0] === 'single').length, 2);
-  assert.deepEqual(env.calls.find(call => call[0] === 'eq' && call[1] === 'meta'), ['eq', 'meta', JSON.stringify(before)]);
+  assert.deepEqual(env.calls.find(call => call[0] === 'eq' && call[1] === 'updated_at'), ['eq', 'updated_at', '2026-11-16T14:22:23.123456+00:00']);
+  assert.equal(env.calls.some(call => call[0] === 'eq' && call[1] === 'meta'), false);
   assert.deepEqual(env.original, before);
   assert.equal(env.c.meta, payload.meta);
   assert.equal(env.c.busy, false);
@@ -232,7 +233,7 @@ test('risk persistence merges the latest server metadata and protects it with a 
   assert.equal(saved.title, serverMeta.title);
   assert.equal(saved.totalBudget, 750);
   assert.deepEqual(saved.additionalField, { preserve: true });
-  assert.deepEqual(env.calls.find(call => call[0] === 'eq' && call[1] === 'meta'), ['eq', 'meta', JSON.stringify(serverMeta)]);
+  assert.deepEqual(env.calls.find(call => call[0] === 'eq' && call[1] === 'updated_at'), ['eq', 'updated_at', '2026-11-16T14:22:23.123456+00:00']);
   assert.equal(env.calls.every(call => call[0] !== 'from' || call[1] === 'projects'), true);
 });
 
@@ -261,11 +262,30 @@ test('retry confirms an already saved risk without a duplicate write despite cha
   assert.equal(env.c.meta.serverOnly, true);
 });
 
-test('empty server metadata uses an explicit null comparison before its first risk write', async () => {
+test('empty server metadata uses the same compact revision comparison before its first risk write', async () => {
   const env = internalEnv({ serverMeta: null });
   await env.c.saveInternalRisks(newRegister());
-  assert.deepEqual(env.calls.find(call => call[0] === 'is'), ['is', 'meta', null]);
+  assert.deepEqual(env.calls.find(call => call[0] === 'eq' && call[1] === 'updated_at'), ['eq', 'updated_at', '2026-11-16T14:22:23.123456+00:00']);
   assert.deepEqual(Object.keys(env.c.meta), ['riskRegister']);
+});
+
+test('missing revision fails closed before an update', async () => {
+  const env = internalEnv({ readResponse: async () => ({ data: { id: 'project-1', meta: snapshot().meta }, error: null }) });
+  await assert.rejects(env.c.saveInternalRisks(newRegister()), /revision could not be verified/);
+  assert.equal(env.calls.some(call => call[0] === 'update'), false);
+  assert.equal(env.c.meta, env.original);
+});
+
+test('large AI evidence is kept out of the conditional update URL', async () => {
+  const serverMeta = { ...snapshot().meta, unrelatedText: 'x'.repeat(40000) };
+  const env = internalEnv({ serverMeta });
+  const register = newRegister();
+  register.items[0].ai = { evidence: [{ detail: 'Evidence '.repeat(4000) }] };
+  await env.c.saveInternalRisks(register);
+  const filters = env.calls.filter(call => call[0] === 'eq' || call[0] === 'is');
+  assert.ok(JSON.stringify(filters).length < 200);
+  assert.equal(env.c.meta.unrelatedText.length, 40000);
+  assert.equal(env.c.meta.riskRegister.items[0].ai.evidence[0].detail.length, 36000);
 });
 
 test('risk persistence read failures and missing projects stop before any update', async () => {

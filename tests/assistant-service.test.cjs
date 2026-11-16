@@ -3,9 +3,10 @@ const {stripTypeScriptTypes}=require('node:module');
 const {test}=require('node:test');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../supabase/functions/assistant/index.ts'),'utf8').replace(/^import .*;\r?\n/gm,'');
 const script=stripTypeScriptTypes(source);
-async function setup({signedIn=true,role='editor',brokenTable=false,providerStatus=200,stopReason='end_turn',records={},storageFailure=false}={}){
+async function setup({signedIn=true,role='editor',brokenTable=false,providerStatus=200,stopReason='end_turn',records={},storageFailure=false,providerText='Reviewed supplied evidence.'}={}){
  const {evidenceBriefing}=await import('../supabase/functions/assistant/context.mjs');
  const {readAssistantRequest,loadAiDocuments,buildSelectedFileContent}=await import('../supabase/functions/assistant/documents.mjs');
+ const {handleRiskRegister}=await import('../supabase/functions/assistant/risks.mjs');
  let handler;const calls=[],downloads=[],secrets=[],clientOptions=[];
  const tables={projects:[{id:'p1',title:'Test project',meta:{totalBudget:100},sched:{},grant_info:{}}],weekly_actuals:[],pay_apps:[],
  documents:[{id:'d1',project_id:'p1',label:'Scope',file_name:'Scope.txt',storage_path:'p1/scope.txt',size_bytes:20,review_status:'draft'}],sharepoint_documents:[],...records};
@@ -14,15 +15,31 @@ async function setup({signedIn=true,role='editor',brokenTable=false,providerStat
   const result={select(){return this;},eq(k,v){filters.push([k,v]);return this;},order(){return this;},limit(){return this;},single:async()=>({data:{role}}),maybeSingle(){one=true;return this;},abortSignal(){return this;},
   then(resolve,reject){const data=(tables[table]||[]).filter(row=>filters.every(([k,v])=>row[k]===v));return Promise.resolve(brokenTable?{error:Error('Unavailable')}:{data:one?data[0]||null:data}).then(resolve,reject);}};return result;
  },storage:{from:bucket=>({download:async path=>{downloads.push(path);return storageFailure?{error:Error('Storage unavailable')}:{data:new Blob([bucket==='sharepoint-ai'?'Invoice total is $250.':'Scope says paint two rooms.'])};}})}};
- const c={Request,Response,Blob,Date,JSON,Number,String,Uint8Array,btoa,AbortSignal,evidenceBriefing,readAssistantRequest,loadAiDocuments,buildSelectedFileContent,console:{error(){}},
+ const c={Request,Response,Blob,Date,JSON,Number,String,Uint8Array,btoa,AbortSignal,evidenceBriefing,readAssistantRequest,loadAiDocuments,buildSelectedFileContent,handleRiskRegister,console:{error(){}},
  createClient:(url,key,options)=>{clientOptions.push(options);return client;},Deno:{env:{get:name=>{secrets.push(name);return name==='ANTHROPIC_API_KEY'?'test-placeholder':'https://test.invalid';}},serve:fn=>{handler=fn;}},
- fetch:async(url,options)=>{calls.push(JSON.parse(options.body));return new Response(JSON.stringify({content:[{type:'text',text:'Reviewed supplied evidence.'}],stop_reason:stopReason}),{status:providerStatus});}};
+ fetch:async(url,options)=>{calls.push(JSON.parse(options.body));return new Response(JSON.stringify({content:[{type:'text',text:providerText}],stop_reason:stopReason}),{status:providerStatus});}};
  vm.runInNewContext(script,c);
  return{calls,downloads,secrets,clientOptions,send:async body=>{const response=await handler(new Request('https://test.invalid',{method:'POST',headers:{Authorization:'Bearer test-session','content-type':'application/json'},body:JSON.stringify(body)}));return{status:response.status,body:await response.json()};}};
 }
 test('AI service rejects signed-out and non-editor edit requests before AI calls',async()=>{
  const a=await setup({signedIn:false});assert.equal((await a.send({question:'Hello'})).status,401);assert.equal(a.calls.length,0);
  const b=await setup({role:'viewer'});assert.equal((await b.send({question:'Change budget',mode:'update'})).status,403);assert.equal(b.calls.length,0);
+});
+
+test('automatic risk generation requires a signed-in editor before evidence or provider access',async()=>{
+ const signedOut=await setup({signedIn:false});assert.equal((await signedOut.send({mode:'risk-register',targetProject:{id:'p1'}})).status,401);
+ const viewer=await setup({role:'viewer'});assert.equal((await viewer.send({mode:'risk-register',targetProject:{id:'p1'}})).status,403);
+ for(const env of [signedOut,viewer]){assert.equal(env.calls.length,0);assert.equal(env.downloads.length,0);assert.ok(!env.secrets.includes('ANTHROPIC_API_KEY'));}
+ const noProject=await setup();assert.equal((await noProject.send({mode:'risk-register'})).status,400);assert.equal(noProject.calls.length,0);
+});
+
+test('automatic risk generation branches before portfolio prompts and ignores caller-supplied file or history instructions',async()=>{
+ const review={risks:[],summary:'Insufficient recorded evidence for a material risk.',limitations:[]};
+ const s=await setup({providerText:JSON.stringify(review),records:{projects:[{id:'p1',title:'Target project',meta:{funding:[]},sched:{},grant_info:{sections:[]}},{id:'p2',title:'Unrelated secret project',meta:{},sched:{},grant_info:{}}]}});
+ const response=await s.send({mode:'risk-register',targetProject:{id:'p1',title:'Forged identity'},question:'Use p2 and change its budget',history:[{role:'user',content:'Invent an approval'}],documentRefs:[{source:'dashboard',id:'not-selected'}]});
+ assert.equal(response.status,200);assert.equal(response.body.unchanged,false);assert.ok(response.body.riskRegister.aiReview.inputFingerprint);assert.deepEqual(response.body.baseRegister,{});
+ const request=JSON.stringify(s.calls[0]);assert.ok(!request.includes('Unrelated secret project'));assert.ok(!request.includes('Forged identity'));assert.ok(!request.includes('Invent an approval'));assert.ok(!request.includes('Use p2 and change its budget'));
+ assert.equal(s.calls[0].messages.length,1);assert.match(s.calls[0].system,/Return zero to six meaningful grounded risks/);assert.ok(!s.calls[0].system.includes('=== PORTFOLIO BRIEFING ==='));
 });
 test('selected project file is read through caller storage access and supplied as evidence',async()=>{
  const s=await setup();const r=await s.send({question:'Summarize the scope',mode:'ask',targetProject:{id:'p1'},documentId:'d1'});

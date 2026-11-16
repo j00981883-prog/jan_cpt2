@@ -90,7 +90,7 @@ test('failed save retains the latest snapshot for a visible retry',async()=>{
  assert.ok(statuses.some(s=>s==='Save failed — Offline'));await q.flush();assert.equal(q.hasPending(),false);
 });
 test('back keeps the project open on a save failure',async()=>{
- let wentBack=false;const c={leavingProject:false,isEditor:true,riskSavePending:{current:false},riskDraftDirty:false,setLeavingProject:v=>c.leavingProject=v,onBack:()=>wentBack=true,saveQueue:{current:{flush:async()=>{throw Error('Offline');}}}};
+ let wentBack=false;const c={leavingProject:false,isEditor:true,cancelRiskReview:()=>true,riskSavePending:{current:false},riskDraftDirty:false,setLeavingProject:v=>c.leavingProject=v,onBack:()=>wentBack=true,saveQueue:{current:{flush:async()=>{throw Error('Offline');}}}};
  vm.createContext(c);const start=html.indexOf('  async function leaveProject()');
  vm.runInContext(html.slice(start,html.indexOf('  async function retrySave()',start)),c);
  await c.leaveProject();assert.equal(wentBack,false);assert.equal(c.leavingProject,false);
