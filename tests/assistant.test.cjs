@@ -145,7 +145,7 @@ test('cancel and revoked editor access cannot apply proposals', async () => {
 });
 test('real bridge updates displayed grant sections and completion date', () => {
   const s = setup(), c = s.context, state = sample();
-  Object.assign(c, state, { isEditor: true, projectId: 'p1', DEFAULT_RETAINAGE: 0.05 });
+  Object.assign(c, state, { isEditor: true, projectId: 'p1', DEFAULT_RETAINAGE: 0.05, riskSavePending: { current: false } });
   for (const [key, setter] of Object.entries({ meta: 'setMeta', sched: 'setSched', grant: 'setGrant', actuals: 'setActuals', payApps: 'setPayApps' })) c[setter] = fn => { c[key] = fn(c[key]); };
   c.useEffect = fn => fn();
   const start = html.indexOf('  // Bridge for the AI assistant:');

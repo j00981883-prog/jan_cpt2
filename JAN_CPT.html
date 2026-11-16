@@ -60,6 +60,9 @@ window.addEventListener("error", function (e) {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./grant-reminders.js?v=grant-recovery-20261103"></script>
 <script src="./presentation-tour.js?v=20261103"></script>
+<link rel="stylesheet" href="./risk-register.css?v=20261116-1" />
+<script src="./risk-register-core.js?v=20261116-1"></script>
+<script src="./risk-register-ui.js?v=20261116-1"></script>
 <script>
 const {
   useState,
@@ -895,6 +898,39 @@ function createProjectSaveQueue(save, onStatus) {
   };
 }
 
+function riskRegistersMatch(left,right){
+  const stable=value=>Array.isArray(value)?value.map(stable):value && typeof value==="object" ? Object.fromEntries(Object.keys(value).filter(key=>key!=="createdAt" && key!=="updatedAt").sort().map(key=>[key,stable(value[key])])):value;
+  return JSON.stringify(stable(window.JANRiskRegister.normalize(left)))===JSON.stringify(stable(window.JANRiskRegister.normalize(right)));
+}
+async function persistProjectRiskRegister(projectId,riskRegister,expectedRegister){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),15000);
+  try{
+    const {data:project,error:readError}=await sb.from("projects").select("id,meta").eq("id",projectId).single().abortSignal(controller.signal);
+    if(readError)throw readError;
+    if(!project?.id)throw new Error("The project is unavailable or your access has changed.");
+    const currentMeta=project.meta || {};
+    // A timed-out successful request can be confirmed on retry without creating
+    // a second risk. Ignore only audit timestamps when comparing its contents.
+    if(riskRegistersMatch(currentMeta.riskRegister,riskRegister))return currentMeta;
+    if(!riskRegistersMatch(currentMeta.riskRegister,expectedRegister))throw new Error("Another person updated the risk register. Reopen the project before saving your changes.");
+    const nextMeta={...currentMeta,riskRegister};
+    let query=sb.from("projects").update({meta:nextMeta}).eq("id",projectId);
+    query=project.meta==null ? query.is("meta",null) : query.eq("meta",JSON.stringify(project.meta));
+    const {data,error}=await query.select("id").single().abortSignal(controller.signal);
+    if(error){
+      if(error.code==="PGRST116")throw new Error("The project changed while saving. Your draft is preserved; try again or reopen the project.");
+      throw error;
+    }
+    if(!data?.id)throw new Error("The save was not confirmed. Check your access and try again.");
+    return nextMeta;
+  }catch(error){
+    if(controller.signal.aborted)throw new Error("Saving the risk timed out. Your draft is preserved; retry to check whether it was saved.");
+    throw error;
+  }finally{clearTimeout(timeout);}
+}
+// PROJECT_RISK_PERSISTENCE_END
+
 function Tracker({
   projectId,
   initial,
@@ -904,6 +940,8 @@ function Tracker({
   presentationTab
 }) {
   const [tab, setTab] = useState("dashboard");
+  const [riskDraftDirty, setRiskDraftDirty] = useState(false);
+  const riskSavePending = React.useRef(false);
   useEffect(()=>{if(['dashboard','log','pay','grant','contracts','docs','memo'].includes(presentationTab))setTab(presentationTab);},[presentationTab]);
   const [actuals, setActuals] = useState(initial.actuals || {});
   const [loaded, setLoaded] = useState(false);
@@ -989,6 +1027,9 @@ function Tracker({
   if(!saveQueue.current)saveQueue.current=createProjectSaveQueue(
     data=>window.JMAA_CLOUD.saveProject(projectId,data),setSaveState);
   const firstSave = React.useRef(true);
+  const confirmedRiskSnapshot = React.useRef(null);
+  const latestProjectSnapshot = React.useRef(null);
+  latestProjectSnapshot.current = {actuals,grant,payApps,sched,meta};
   useEffect(() => {
     if (!loaded) return;
     if (firstSave.current) {
@@ -996,6 +1037,9 @@ function Tracker({
       return;
     } // don't re-save what we just loaded
     if (!isEditor) return;
+    const confirmed=confirmedRiskSnapshot.current;
+    confirmedRiskSnapshot.current=null;
+    if(confirmed && confirmed.actuals===actuals && confirmed.grant===grant && confirmed.payApps===payApps && confirmed.sched===sched && confirmed.meta===meta)return;
     saveQueue.current.schedule({actuals,grant,payApps,sched,meta});
   }, [actuals, grant, payApps, sched, meta, loaded, isEditor, projectId]);
   useEffect(()=>{
@@ -1005,11 +1049,41 @@ function Tracker({
   },[]);
   async function leaveProject(){
     if(leavingProject)return;
+    if(riskSavePending.current)return;
+    if(riskDraftDirty && !window.confirm("Leave without saving your risk changes?"))return;
     setLeavingProject(true);
     try{if(isEditor)await saveQueue.current.flush();onBack();}
     catch(error){setLeavingProject(false);}
   }
   async function retrySave(){try{await saveQueue.current.flush();}catch(error){/* Status retains the retry action. */}}
+  function navigateProjectTab(nextTab){
+    if(nextTab===tab)return;
+    if(riskSavePending.current)return;
+    if(riskDraftDirty && !window.confirm("Leave without saving your risk changes?"))return;
+    setRiskDraftDirty(false);
+    setTab(nextTab);
+  }
+  async function saveRiskRegister(riskRegister){
+    if(!isEditor)throw new Error("Editor access is required to save risks.");
+    if(riskSavePending.current)throw new Error("A risk save is already in progress.");
+    riskSavePending.current=true;
+    try{
+      await saveQueue.current.flush();
+      const snapshot=latestProjectSnapshot.current;
+      const savedMeta=await persistProjectRiskRegister(projectId,riskRegister,snapshot.meta.riskRegister);
+      const confirmed={...snapshot,meta:savedMeta};
+      confirmedRiskSnapshot.current=confirmed;
+      latestProjectSnapshot.current=confirmed;
+      setMeta(savedMeta);
+      setSaveState("✓ Risk register saved");
+    }finally{riskSavePending.current=false;}
+  }
+  useEffect(()=>{
+    if(!riskDraftDirty)return;
+    const warn=event=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",warn);
+    return()=>window.removeEventListener("beforeunload",warn);
+  },[riskDraftDirty]);
   useEffect(() => {
     try {
       document.title = meta.title + " — JAN CPT";
@@ -1029,6 +1103,7 @@ function Tracker({
       projectTitle: meta.title,
       snapshot: { meta, sched, grant, actuals, payApps },
       apply(changes) {
+        if(riskSavePending.current)throw new Error("Wait for the risk register save to finish before applying another change.");
         changes = validateAIChanges(changes, { meta, sched, grant, actuals, payApps });
         const done = [];
         (changes || []).forEach(c => {
@@ -1228,6 +1303,7 @@ function Tracker({
   const updateOps = useMemo(() => parseUpdate(updateText), [updateText]);
   const updateItems = useMemo(() => summarizeOps(updateOps, actuals, payApps), [updateOps, actuals, payApps]);
   const applyUpdate = () => {
+    if(riskSavePending.current){say("Wait for the risk register save to finish.");return;}
     const o = updateOps;
     if (updateItems.length === 0) {
       say("Nothing to apply");
@@ -1364,8 +1440,10 @@ function Tracker({
   };
   const importJSON = file => {
     if (!file) return;
+    if(riskSavePending.current){say("Wait for the risk register save to finish, then import again.");return;}
     const r = new FileReader();
     r.onload = () => {
+      if(riskSavePending.current){say("Wait for the risk register save to finish, then import again.");return;}
       try {
         const d = JSON.parse(r.result);
         if (d.format !== "jmaa-project-tracker") {
@@ -1576,6 +1654,8 @@ function Tracker({
     const cos = coN === 0 ? ["green", "None"] : ["amber", coN + " executed" + (coCost ? " · " + fmtMoney(coCost) : "") + (coDays ? " · +" + coDays + "d" : "")];
     const safety = (Number(grant.safetyIncidents) || 0) === 0 ? ["green", "Zero incidents"] : ["red", grant.safetyIncidents + " incident(s)"];
     const rows = [["Budget", ...budget], ["Schedule", ...schedule], ["Grant Compliance", ...compliance], ["Reimbursements", ...reimb], ["Change Orders", ...cos], ["Safety", ...safety]];
+    const register = typeof window !== "undefined" && window.JANRiskRegister ? window.JANRiskRegister.summarize(meta.riskRegister) : null;
+    if(register?.active.length)rows.push(["Project risks",register.kind,register.active.length + " open · " + register.level + (register.counts.needsAttention ? " · " + register.counts.needsAttention + " need follow-up" : "")]);
     const risk = rows.some(r => r[1] === "red") ? ["red", "High"] : rows.some(r => r[1] === "amber") ? ["amber", "Moderate"] : ["green", "Low"];
     rows.push(["Risk Level", risk[0], risk[1]]);
     return {
@@ -1689,10 +1769,10 @@ function Tracker({
     className: "save-chip", role:"status"
   }, isEditor ? saveState : "View only", isEditor && saveState.startsWith("Save failed") && React.createElement("button",{className:"btn btn-tutorial btn-xs",onClick:retrySave},"Retry save")))), /*#__PURE__*/React.createElement("nav", {
     className: "tabs"
-  }, [["dashboard", "Dashboard"], ["log", "Weekly Log"], ["pay", "Pay Applications"], ["grant", "Grant & Compliance"], ["contracts", "Contracts & Funding"], ["docs", "Documents"], ["memo", "Board Memo"]].map(([k, l]) => /*#__PURE__*/React.createElement("button", {
+  }, [["dashboard", "Dashboard"], ["risks", "Risk Register"], ["log", "Weekly Log"], ["pay", "Pay Applications"], ["grant", "Grant & Compliance"], ["contracts", "Contracts & Funding"], ["docs", "Documents"], ["memo", "Board Memo"]].map(([k, l]) => /*#__PURE__*/React.createElement("button", {
     key: k,
     className: tab === k ? "tab on" : "tab",
-    onClick: () => setTab(k)
+    onClick: () => navigateProjectTab(k)
   }, l, k === "dashboard" && hardStop && /*#__PURE__*/React.createElement("span", {
     className: "count red"
   }, "!"))))), /*#__PURE__*/React.createElement(Ticker, {
@@ -1722,8 +1802,8 @@ function Tracker({
     meta: meta,
     projectId: projectId,
     grant: grant,
-    onNavigate: nextTab => { setTab(nextTab); window.scrollTo({top:0,behavior:"auto"}); }
-  }), tab === "log" && /*#__PURE__*/React.createElement(WeeklyLog, {
+    onNavigate: nextTab => { navigateProjectTab(nextTab); window.scrollTo({top:0,behavior:"auto"}); }
+  }), tab === "risks" && React.createElement("div",{className:"pad"},React.createElement(ProjectRiskRegister,{value:meta.riskRegister,isEditor,onSave:saveRiskRegister,projectTitle:meta.title,saveStatus:saveState,onDirtyChange:setRiskDraftDirty})), tab === "log" && /*#__PURE__*/React.createElement(WeeklyLog, {
     rows: rows,
     setWeek: setWeek,
     current: current,
@@ -2089,7 +2169,8 @@ function buildProjectRiskExplanation({execSum = {}, grant = {}, meta = {}, curre
     ['Grant Compliance','grant','Review grant checklist'],
     ['Reimbursements','pay','Review pay applications'],
     ['Change Orders','grant','Review change orders'],
-    ['Safety','grant','Review safety records']
+    ['Safety','grant','Review safety records'],
+    ...(rows.some(row=>row[0]==='Project risks') ? [['Project risks','risks','Open risk register']] : [])
   ].map(([label,tab,actionLabel])=>{
     const row = rows.find(item=>Array.isArray(item) && item[0]===label);
     const kind = ['red','amber','green','neutral'].includes(row?.[1]) ? row[1] : 'neutral';
@@ -2166,6 +2247,9 @@ function buildProjectRiskExplanation({execSum = {}, grant = {}, meta = {}, curre
         item.reason += ' Recorded net changes: ' + money(cost) + ' and ' + days + ' calendar days.';
       }
       item.action = recorded ? 'Confirm each change order, its approval, and its effect on cost and completion dates.' : 'Record any approved scope, cost or schedule changes as they occur.';
+    } else if(label==='Project risks') {
+      item.reason = 'Open and monitoring risks are rated using likelihood × impact on a 1–5 scale. Scores 1–4 are Low, 5–9 Moderate, and 10–25 High. The highest active rating feeds this indicator; closed risks remain in history.';
+      item.action = 'Review the highest risks, assign an owner and action plan, and follow up on missing or overdue review dates. An unrated risk still needs assessment.';
     } else if(label==='Safety') {
       const incidents = count(grant.safetyIncidents);
       item.reason = kind==='red' ? incidents + ' safety incident(s) are recorded. Any nonzero count makes this indicator red; the rating does not describe severity or resolution.' : 'No safety incidents are recorded. This reflects dashboard entries, not independent confirmation of site conditions.';
@@ -2187,6 +2271,14 @@ function buildProjectRiskExplanation({execSum = {}, grant = {}, meta = {}, curre
     attention:[...red,...amber],checks:items.filter(item=>item.kind!=='red' && item.kind!=='amber')};
 }
 // PROJECT_RISK_DETAILS_END
+
+function ProjectRiskRegister(props){
+  if(window.JANRiskRegisterUI?.RiskRegister && window.JANRiskRegister)return React.createElement(window.JANRiskRegisterUI.RiskRegister,props);
+  return React.createElement("section",{className:"panel",role:"alert"},React.createElement("h2",null,"Risk register could not load"),React.createElement("p",null,"Refresh the page to load the risk register. Existing project records are still available."));
+}
+function ProjectRiskPreview({value,onOpen}){
+  return window.JANRiskRegisterUI?.RiskRegisterPreview && window.JANRiskRegister ? React.createElement(window.JANRiskRegisterUI.RiskRegisterPreview,{value,onOpen}) : null;
+}
 
 function ExecutiveSummary({execSum, riskDetails, projectId, onNavigate}) {
   const [riskOpen, setRiskOpen] = useState(false);
@@ -2254,7 +2346,7 @@ function Dashboard({
   return /*#__PURE__*/React.createElement("div", {
     className: "pad"
   }, React.createElement(ExecutiveSummary, {execSum, projectId, onNavigate,
-    riskDetails:buildProjectRiskExplanation({execSum,grant,meta,current,pay})}), /*#__PURE__*/React.createElement(MunisUpdateLauncher, {
+    riskDetails:buildProjectRiskExplanation({execSum,grant,meta,current,pay})}), React.createElement(ProjectRiskPreview,{value:meta.riskRegister,onOpen:()=>onNavigate("risks")}), /*#__PURE__*/React.createElement(MunisUpdateLauncher, {
     projectId: projectId
   }), /*#__PURE__*/React.createElement(LastWalkthrough, {
     projectId: projectId
@@ -9523,16 +9615,50 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [riskDraftDirty, setRiskDraftDirty] = useState(false);
+  const internalWrite = React.useRef(false);
   const [showProjectNo, setShowProjectNo] = useState(!!meta.projectNo);
   const [showEngineer, setShowEngineer] = useState(!!meta.engineerOfRecord);
   const setM = key => e => setMeta(m => ({ ...m, [key]: e.target.value }));
   const setS = key => e => setSched(s => ({ ...s, [key]: e.target.value }));
+  function navigateInternalTab(nextTab){
+    if(busy || internalWrite.current)return false;
+    if(nextTab===tab)return true;
+    if(editing && nextTab!=="overview"){setMsg("Save your project details before switching tabs.");return false;}
+    if(riskDraftDirty && !window.confirm("Leave without saving your risk changes?"))return false;
+    setRiskDraftDirty(false);setTab(nextTab);return true;
+  }
+  function leaveInternalProject(){
+    if(busy || internalWrite.current)return;
+    if(riskDraftDirty && !window.confirm("Leave without saving your risk changes?"))return;
+    onBack();
+  }
+  async function saveInternalRisks(riskRegister){
+    if(!isEditor)throw new Error("Editor access is required to save risks.");
+    if(busy || internalWrite.current)throw new Error("Please wait for the current save to finish.");
+    if(editing)throw new Error("Save project details before editing risks.");
+    internalWrite.current=true;setBusy(true);
+    try{
+      const savedMeta=await persistProjectRiskRegister(projectId,riskRegister,meta.riskRegister);
+      setMeta(savedMeta);
+    }finally{internalWrite.current=false;setBusy(false);}
+  }
+  useEffect(()=>{
+    if(!riskDraftDirty)return;
+    const warn=event=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",warn);
+    return()=>window.removeEventListener("beforeunload",warn);
+  },[riskDraftDirty]);
   async function save() {
+    if(!isEditor || busy || internalWrite.current)return;
     if (!String(meta.title || "").trim()) { setMsg("Project name is required."); return; }
     const completion = meta.targetISO || meta.internalCompletion || "";
     if (sched.startISO && completion && completion < sched.startISO) { setMsg("Target completion must be on or after the start date."); return; }
+    internalWrite.current=true;
     setBusy(true);
     setMsg("");
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),15000);
     const nextMeta = {
       ...meta,
       title: String(meta.title).trim(),
@@ -9546,9 +9672,10 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
       projectCategory: "internal"
     };
     try {
-      const { error } = await requestWithTimeout(sb.from("projects")
-        .update({ title: nextMeta.title, meta: nextMeta, sched }).eq("id", projectId), "Saving project");
+      const { data, error } = await sb.from("projects")
+        .update({ title: nextMeta.title, meta: nextMeta, sched }).eq("id", projectId).select("id").single().abortSignal(controller.signal);
       if (error) throw error;
+      if (!data?.id) throw new Error("The project could not be updated. Check your access and try again.");
       setMeta(nextMeta);
       setEditing(false);
       setMsg("Saved");
@@ -9556,6 +9683,7 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
     } catch (error) {
       setMsg(error.message || "The project could not be saved. Please try again.");
     } finally {
+      clearTimeout(timeout);internalWrite.current=false;
       setBusy(false);
     }
   }
@@ -9569,11 +9697,11 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   const dateLabel = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not set";
   return /*#__PURE__*/React.createElement("div", { className: "internal-app" }, /*#__PURE__*/React.createElement("header", {
     className: "internal-head"
-  }, /*#__PURE__*/React.createElement("button", { className: "internal-back", onClick: onBack }, "← All projects"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", { className: "internal-back", onClick: leaveInternalProject, disabled:busy }, "← All projects"), /*#__PURE__*/React.createElement("div", {
     className: "internal-head-title"
   }, "Internal / Maintenance"), isEditor && /*#__PURE__*/React.createElement("button", {
     className: editing ? "internal-save" : "internal-edit-btn",
-    onClick: editing ? save : () => { setTab("overview"); setEditing(true); }, disabled: busy
+    onClick: editing ? save : () => { if(navigateInternalTab("overview"))setEditing(true); }, disabled: busy
   }, busy ? "Saving…" : editing ? "Save changes" : "Edit project")), /*#__PURE__*/React.createElement("main", { className: "internal-wrap" }, /*#__PURE__*/React.createElement("section", {
     className: "internal-hero"
   }, /*#__PURE__*/React.createElement("div", { className: "internal-kicker" }, "Internal / Maintenance Project"), /*#__PURE__*/React.createElement("h1", null, meta.title || "Untitled project"), /*#__PURE__*/React.createElement("div", {
@@ -9581,11 +9709,13 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
   }, meta.location ? "⌖  " + meta.location : "Location not set")), /*#__PURE__*/React.createElement("div", {
     className: "internal-tabs"
   }, /*#__PURE__*/React.createElement("button", {
-    className: "internal-tab" + (tab === "overview" ? " on" : ""), onClick: () => setTab("overview")
+    className: "internal-tab" + (tab === "overview" ? " on" : ""), onClick: () => navigateInternalTab("overview")
   }, "Overview"), /*#__PURE__*/React.createElement("button", {
-    className: "internal-tab" + (tab === "walkthroughs" ? " on" : ""), onClick: () => setTab("walkthroughs")
+    className: "internal-tab" + (tab === "risks" ? " on" : ""), onClick: () => navigateInternalTab("risks")
+  }, "Risk Register"), /*#__PURE__*/React.createElement("button", {
+    className: "internal-tab" + (tab === "walkthroughs" ? " on" : ""), onClick: () => navigateInternalTab("walkthroughs")
   }, "Walkthroughs"), /*#__PURE__*/React.createElement("button", {
-    className: "internal-tab" + (tab === "documents" ? " on" : ""), onClick: () => setTab("documents")
+    className: "internal-tab" + (tab === "documents" ? " on" : ""), onClick: () => navigateInternalTab("documents")
   }, "Documents")), tab === "overview" ? editing ? /*#__PURE__*/React.createElement("section", { className: "internal-card" }, /*#__PURE__*/React.createElement("h2", null, "Edit project"), /*#__PURE__*/React.createElement("p", {
     className: "internal-help"
   }, "Keep it simple—only add what this project needs."), /*#__PURE__*/React.createElement("div", { className: "internal-grid" }, /*#__PURE__*/React.createElement("label", {
@@ -9622,11 +9752,11 @@ function InternalProject({ projectId, initial, isEditor, onBack }) {
     className: "internal-stats"
   }, /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Budget"), /*#__PURE__*/React.createElement("strong", null, fmtMoney(meta.primeBudget || 0))), /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Start date"), /*#__PURE__*/React.createElement("strong", null, dateLabel(sched.startISO))), /*#__PURE__*/React.createElement("div", { className: "internal-stat" }, /*#__PURE__*/React.createElement("span", null, "Target completion"), /*#__PURE__*/React.createElement("strong", null, dateLabel(target)))), /*#__PURE__*/React.createElement("div", {
     className: "internal-overview"
-  }, /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Project details"), /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("b", null, meta.location || "Not set")), showProjectNo && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Project number"), /*#__PURE__*/React.createElement("b", null, meta.projectNo || "Not set")), showEngineer && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Engineer"), /*#__PURE__*/React.createElement("b", null, meta.engineerOfRecord || "Not set"))), /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Notes"), notes ? /*#__PURE__*/React.createElement("p", { className: "internal-note-copy" }, notes) : /*#__PURE__*/React.createElement("p", { className: "internal-note-copy internal-empty" }, "No notes added yet."))), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : tab === "walkthroughs" ? /*#__PURE__*/React.createElement("div", { className: "internal-docs" }, /*#__PURE__*/React.createElement(LastWalkthrough, { projectId }), /*#__PURE__*/React.createElement(FieldSetup, { projectId, isEditor })) : /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Project details"), /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Location"), /*#__PURE__*/React.createElement("b", null, meta.location || "Not set")), showProjectNo && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Project number"), /*#__PURE__*/React.createElement("b", null, meta.projectNo || "Not set")), showEngineer && /*#__PURE__*/React.createElement("div", { className: "internal-info-row" }, /*#__PURE__*/React.createElement("span", null, "Engineer"), /*#__PURE__*/React.createElement("b", null, meta.engineerOfRecord || "Not set"))), /*#__PURE__*/React.createElement("section", { className: "internal-panel" }, /*#__PURE__*/React.createElement("h2", null, "Notes"), notes ? /*#__PURE__*/React.createElement("p", { className: "internal-note-copy" }, notes) : /*#__PURE__*/React.createElement("p", { className: "internal-note-copy internal-empty" }, "No notes added yet."))), msg && /*#__PURE__*/React.createElement("div", { className: "internal-msg" }, msg)) : tab === "risks" ? React.createElement(ProjectRiskRegister,{value:meta.riskRegister,isEditor,onSave:saveInternalRisks,projectTitle:meta.title,onDirtyChange:setRiskDraftDirty}) : tab === "walkthroughs" ? /*#__PURE__*/React.createElement("div", { className: "internal-docs" }, /*#__PURE__*/React.createElement(LastWalkthrough, { projectId }), /*#__PURE__*/React.createElement(FieldSetup, { projectId, isEditor })) : /*#__PURE__*/React.createElement("div", {
     className: "internal-docs"
   }, /*#__PURE__*/React.createElement(Documents, { projectId, isEditor, grant, setGrant, say: setMsg }))), /*#__PURE__*/React.createElement("button", {
     className: "mobile-project-nav",
-    onClick: onBack
+    onClick: leaveInternalProject, disabled:busy
   }, "← All Projects"));
 }
 
